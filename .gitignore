@@ -1,0 +1,19 @@
+# 1. Ignore everything by default
+*
+
+# 2. Allow Git to traverse subdirectories so it can scan for unignored files
+!*/
+
+# 3. Explicitly allow and track the .gitignore file itself
+!.gitignore
+
+# 4. Explicitly allow and track core project configuration and documentation
+!pom.xml
+!README.md
+
+# 5. Explicitly allow the iris batch file
+!iris.bat
+
+# 6. Explicitly allow the src directory and all of its contents (source files)
+!src/
+!src/**
