@@ -11,7 +11,8 @@
 !pom.xml
 !README.md
 
-# 5. Explicitly allow the iris batch file
+# 5. Explicitly allow the convenient iris runner scripts (for Windows/Linux/Mac)
+!iris
 !iris.bat
 
 # 6. Explicitly allow the src directory and all of its contents (source files)

@@ -1,0 +1,20 @@
+set -e
+
+# 1. Finds the folder where this script lives
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLASSES_DIR="$SCRIPT_DIR/target/classes"
+JAR_FILE="$SCRIPT_DIR/target/irisscript-language-1.0.jar"
+
+# 2. Determines the classpath (prefers compiled classes, fallbacks to JAR)
+if [ -d "$CLASSES_DIR" ]; then
+    CP="$CLASSES_DIR"
+elif [ -f "$JAR_FILE" ]; then
+    CP="$JAR_FILE"
+else
+    echo "[Iris] Project has not been built yet. Running mvn compile..."
+    mvn -f "$SCRIPT_DIR/pom.xml" compile
+    CP="$CLASSES_DIR"
+fi
+
+# 3. Runs the Java application and forwards all arguments ("$@")
+java -cp "$CP" irisscript.cli.Main "$@"
