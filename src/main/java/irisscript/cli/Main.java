@@ -21,6 +21,9 @@ public class Main {
         for (Diagnostic diagnostic : diagnosticsCollector.getDiagnostics()) {
             System.err.println(diagnosticsFormatter.format(diagnostic));
         }
+        if (diagnosticsCollector.hasErrors()) {
+            System.exit(1);
+        }
     }
 
 }
