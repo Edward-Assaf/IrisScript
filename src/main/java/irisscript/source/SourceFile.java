@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-final class SourceFile {
+public final class SourceFile {
 
     private final int id;
 
@@ -124,7 +124,7 @@ final class SourceFile {
     }
 
     private int findLineIndex(int offset) {
-        int start = 0, end = contentsLength - 1;
+        int start = 0, end = lineOffsets.length - 1;
         while (start <= end) {
             int mid = start + (end - start) / 2;
             if (lineOffsets[mid] <= offset) {

@@ -1,6 +1,6 @@
 package irisscript.source;
 
-final record SourceSpan(int sourceID, int startOffset, int endOffset) {
+public final record SourceSpan(int sourceID, int startOffset, int endOffset) {
 
     public SourceSpan {
         if (sourceID < 0) {

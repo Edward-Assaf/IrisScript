@@ -35,7 +35,7 @@ final class CLIParser {
                 continue;
             }
             String lowerCaseRawArgument = rawArguments[i].toLowerCase();
-            switch(lowerCaseRawArgument) {
+            switch (lowerCaseRawArgument) {
                 case "-o", "--output":
                     if (i + 1 == rawArguments.length) {
                         return CLIArguments.error("Output directory is missing");
