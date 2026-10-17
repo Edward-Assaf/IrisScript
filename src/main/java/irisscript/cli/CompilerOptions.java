@@ -3,7 +3,7 @@ package irisscript.cli;
 import java.util.ArrayList;
 import java.util.List;
 
-final class CompilerOptions {
+public final class CompilerOptions {
 
     private String outputDirectory;
 
