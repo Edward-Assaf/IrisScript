@@ -29,7 +29,7 @@ public final class IrisLexer {
                 "diagnosticsCollector must not be null");
     }
 
-    public List<Token> tokenize(SourceFile sourceFile) {
+    public TokenStream tokenize(SourceFile sourceFile) {
         this.sourceFile = Objects.requireNonNull(sourceFile, "sourceFile must not be null");
         this.contents = sourceFile.getContents();
         this.start = 0;
@@ -40,7 +40,7 @@ public final class IrisLexer {
             scanToken();
         }
         tokens.add(new Token(TokenType.EOF, "", sourceFile.getSpan(current, current)));
-        return List.copyOf(tokens);
+        return new TokenStream(tokens);
     }
 
     private void scanToken() {
