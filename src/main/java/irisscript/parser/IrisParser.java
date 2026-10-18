@@ -34,18 +34,30 @@ public final class IrisParser {
         List<Statement> statements = new ArrayList<>();
         Token firstToken = tokens.peek();
         while (!this.tokens.isAtEnd()) {
+            int startIndex = this.tokens.getPosition();
+            Token startToken = this.tokens.peek();
+            boolean isDeclaration = startToken.type() == TokenType.KEYWORD_FUNCTION;
             try {
-                if (this.tokens.check(TokenType.KEYWORD_FUNCTION)) {
+                if (isDeclaration) {
                     declarations.add(parseFunctionDeclaration());
                 } else {
                     statements.add(parseStatement());
                 }
             } catch (ParseException e) {
-                synchronize();
+                SourceSpan errorSpan = spanFrom(startToken, lastConsumedOr(startToken, startIndex));
+                if (isDeclaration) {
+                    declarations.add(new ErrorDeclaration(errorSpan));
+                } else {
+                    statements.add(new ErrorStatement(errorSpan));
+                }
+                synchronizeTopLevel();
+            }
+            if (this.tokens.getPosition() == startIndex && !this.tokens.isAtEnd()) {
+                this.tokens.consume();
             }
         }
         Token lastToken = this.tokens.peek();
-        SourceSpan unitSpan = SourceSpan.covering(firstToken.span(), lastToken.span());
+        SourceSpan unitSpan = spanFrom(firstToken, lastToken);
         return new CompilationUnit(declarations, statements, unitSpan);
     }
 
@@ -124,7 +136,7 @@ public final class IrisParser {
             reportError("E1010", "Constant '" + nameToken.lexeme() + "' must be initialized", nameToken.span());
         }
         Token semicolon = consume(TokenType.DELIMITER_SEMICOLON, "E1005", "Expected ';' after variable declaration");
-        SourceSpan span = SourceSpan.covering(keywordToken.span(), semicolon.span());
+        SourceSpan span = spanFrom(keywordToken, semicolon);
         return new VariableDeclarationStatement(nameToken.lexeme(), type, initializer, isConstant, span);
     }
 
@@ -177,27 +189,39 @@ public final class IrisParser {
             value = parseExpression();
         }
         Token semi = consume(TokenType.DELIMITER_SEMICOLON, "E1005", "Expected ';' after return statement");
-        return new ReturnStatement(value, SourceSpan.covering(returnToken.span(), semi.span()));
+        return new ReturnStatement(value, spanFrom(returnToken, semi));
     }
 
     private BreakStatement parseBreakStatement(Token breakToken) {
         Token semi = consume(TokenType.DELIMITER_SEMICOLON, "E1005", "Expected ';' after 'break'");
-        return new BreakStatement(SourceSpan.covering(breakToken.span(), semi.span()));
+        return new BreakStatement(spanFrom(breakToken, semi));
     }
 
     private SkipStatement parseSkipStatement(Token skipToken) {
         Token semi = consume(TokenType.DELIMITER_SEMICOLON, "E1005", "Expected ';' after 'skip'");
-        return new SkipStatement(SourceSpan.covering(skipToken.span(), semi.span()));
+        return new SkipStatement(spanFrom(skipToken, semi));
     }
 
     private BlockStatement parseBlockStatement() {
         Token openBrace = consume(TokenType.DELIMITER_LBRACE, "E1007", "Expected '{'");
         List<Statement> statements = new ArrayList<>();
         while (!tokens.check(TokenType.DELIMITER_RBRACE) && !tokens.isAtEnd()) {
-            statements.add(parseStatement());
+            int startIndex = tokens.getPosition();
+            Token startToken = tokens.peek();
+            try {
+                statements.add(parseStatement());
+            } catch (ParseException e) {
+                SourceSpan errorSpan = spanFrom(startToken, lastConsumedOr(startToken, startIndex));
+                statements.add(new ErrorStatement(errorSpan));
+                synchronizeStatement();
+            }
+            if (tokens.getPosition() == startIndex && !tokens.isAtEnd()
+                    && !tokens.check(TokenType.DELIMITER_RBRACE)) {
+                tokens.consume();
+            }
         }
         Token closeBrace = consume(TokenType.DELIMITER_RBRACE, "E1006", "Expected '}' after block");
-        return new BlockStatement(statements, SourceSpan.covering(openBrace.span(), closeBrace.span()));
+        return new BlockStatement(statements, spanFrom(openBrace, closeBrace));
     }
 
     private ExpressionStatement parseExpressionStatement() {
@@ -224,7 +248,7 @@ public final class IrisParser {
                 return new AssignmentExpression(id.name(), value, span);
             }
             reportError("E1004", "Invalid assignment target, must be an identifier", equalsToken.span());
-            throw new ParseException();
+            return new ErrorExpression(SourceSpan.covering(expr.span(), value.span()));
         }
         return expr;
     }
@@ -407,11 +431,14 @@ public final class IrisParser {
             Token lparen = tokens.previous();
             Expression inner = parseExpression();
             Token rparen = consume(TokenType.DELIMITER_RPAREN, "E1003", "Expected ')' after expression");
-            return new GroupingExpression(inner, SourceSpan.covering(lparen.span(), rparen.span()));
+            return new GroupingExpression(inner, spanFrom(lparen, rparen));
         }
         Token current = tokens.peek();
-        reportError("E1002", "Unexpected token: '" + current.lexeme() + "'", current.span());
-        throw new ParseException();
+        reportError("E1002", "Expected an expression, found '" + current.lexeme() + "'", current.span());
+        if (!isExpressionBoundary(current.type()) && !tokens.isAtEnd()) {
+            tokens.consume();
+        }
+        return new ErrorExpression(current.span());
     }
 
     // ==========================================
@@ -445,7 +472,8 @@ public final class IrisParser {
         if (tokens.check(expected)) {
             return tokens.consume();
         }
-        reportError(code, message, (code == "E1005") ? tokens.previous().span() : tokens.peek().span());
+        SourceSpan errorSpan = (code.equals("E1005") ? tokens.previous().span() : tokens.peek().span());
+        reportError(code, message, errorSpan);
         throw new ParseException();
     }
 
@@ -453,32 +481,68 @@ public final class IrisParser {
         diagnosticsCollector.report(DiagnosticSeverity.ERROR, new DiagnosticCode(code), message, span);
     }
 
-    private void synchronize() {
-        if (!tokens.isAtEnd()) {
-            tokens.consume();
+    private boolean isExpressionBoundary(TokenType type) {
+        return type == TokenType.DELIMITER_SEMICOLON
+                || type == TokenType.DELIMITER_COMMA
+                || type == TokenType.DELIMITER_RPAREN
+                || type == TokenType.DELIMITER_RBRACE
+                || type == TokenType.EOF;
+    }
+
+    private Token lastConsumedOr(Token fallback, int startIndex) {
+        if (tokens.getPosition() <= startIndex) {
+            return fallback;
         }
+        return tokens.previous();
+    }
+
+    private SourceSpan spanFrom(Token start, Token end) {
+        if (start.span().sourceID() != end.span().sourceID()) {
+            return start.span();
+        }
+        return SourceSpan.covering(start.span(), end.span());
+    }
+
+    private void synchronizeStatement() {
         while (!tokens.isAtEnd()) {
+            if (tokens.check(TokenType.DELIMITER_RBRACE)) {
+                return;
+            }
+            if (tokens.getPosition() > 0 && tokens.previous().type() == TokenType.DELIMITER_SEMICOLON) {
+                return;
+            }
+            if (isStatementStart(tokens.peek().type())) {
+                return;
+            }
+            tokens.consume();
             if (tokens.previous().type() == TokenType.DELIMITER_SEMICOLON) {
                 return;
             }
-            if (tokens.previous().type() == TokenType.DELIMITER_RBRACE) {
+        }
+    }
+
+    private boolean isStatementStart(TokenType type) {
+        return switch (type) {
+            case KEYWORD_IF, KEYWORD_WHILE, KEYWORD_RETURN, KEYWORD_BREAK, KEYWORD_SKIP, KEYWORD_VARIABLE,
+                    KEYWORD_CONSTANT, DELIMITER_LBRACE ->
+                true;
+            default -> false;
+        };
+    }
+
+    private void synchronizeTopLevel() {
+        while (!tokens.isAtEnd()) {
+            if (tokens.getPosition() > 0) {
+                TokenType previousType = tokens.previous().type();
+                if (previousType == TokenType.DELIMITER_SEMICOLON || previousType == TokenType.DELIMITER_RBRACE) {
+                    return;
+                }
+            }
+            TokenType type = tokens.peek().type();
+            if (type == TokenType.KEYWORD_FUNCTION || isStatementStart(type)) {
                 return;
             }
-            switch (tokens.peek().type()) {
-                case KEYWORD_FUNCTION:
-                case KEYWORD_IF:
-                case KEYWORD_WHILE:
-                case KEYWORD_RETURN:
-                case KEYWORD_BREAK:
-                case KEYWORD_SKIP:
-                case KEYWORD_VARIABLE:
-                case KEYWORD_CONSTANT:
-                case KEYWORD_ELSE:
-                case KEYWORD_ELSEIF:
-                    return;
-                default:
-                    tokens.consume();
-            }
+            tokens.consume();
         }
     }
 
