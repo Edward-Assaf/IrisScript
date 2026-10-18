@@ -1,6 +1,6 @@
 package irisscript.lexer;
 
-enum TokenType {
+public enum TokenType {
 
     KEYWORD_VARIABLE,
     KEYWORD_TRUE,
@@ -23,7 +23,6 @@ enum TokenType {
     LITERAL_INTEGER,
     LITERAL_DECIMAL,
     LITERAL_TEXT,
-    LITERAL_BOOLEAN,
 
     IDENTIFIER,
 

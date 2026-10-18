@@ -4,7 +4,7 @@ import java.util.Objects;
 
 import irisscript.source.SourceSpan;
 
-final record Token(TokenType type, String lexeme, Object literal, SourceSpan span) {
+public final record Token(TokenType type, String lexeme, Object literal, SourceSpan span) {
 
     public Token {
         Objects.requireNonNull(type, "type must not be null");

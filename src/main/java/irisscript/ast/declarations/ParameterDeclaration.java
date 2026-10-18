@@ -5,7 +5,7 @@ import java.util.Objects;
 import irisscript.ast.types.TypeNode;
 import irisscript.source.SourceSpan;
 
-public final record ParameterDeclaration(String name, TypeNode type, SourceSpan span) {
+public final record ParameterDeclaration(String name, TypeNode type, boolean isConstant, SourceSpan span) {
 
     public ParameterDeclaration {
         Objects.requireNonNull(name, "name must not be null");

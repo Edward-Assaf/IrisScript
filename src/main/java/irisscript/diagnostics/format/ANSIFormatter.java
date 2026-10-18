@@ -1,5 +1,6 @@
 package irisscript.diagnostics.format;
 
+import java.nio.file.Paths;
 import java.util.Objects;
 
 import irisscript.diagnostics.Diagnostic;
@@ -83,9 +84,6 @@ public final class ANSIFormatter implements DiagnosticsFormatter {
         String stringLineNumber = Integer.toString(lineNumber);
         output.append(severityColor(severity))
                 .append(BOLD)
-                .append(" ".repeat(stringLineNumber.length() + 1))
-                .append(" |")
-                .append(System.lineSeparator())
                 .append(' ')
                 .append(stringLineNumber)
                 .append(" | ")
@@ -130,7 +128,7 @@ public final class ANSIFormatter implements DiagnosticsFormatter {
         }
         int offset = Math.min(span.startOffset(), sourceFile.getContentsLength());
         StringBuilder output = new StringBuilder();
-        output.append(sourceFile.getName())
+        output.append(Paths.get(sourceFile.getName()).getFileName())
                 .append(':')
                 .append(sourceFile.getLineNumber(offset))
                 .append(':')
