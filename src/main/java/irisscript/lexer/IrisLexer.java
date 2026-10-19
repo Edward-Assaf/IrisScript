@@ -299,6 +299,7 @@ public final class IrisLexer {
             Map.entry("function", TokenType.KEYWORD_FUNCTION),
             Map.entry("return", TokenType.KEYWORD_RETURN),
             Map.entry("void", TokenType.KEYWORD_VOID),
-            Map.entry("constant", TokenType.KEYWORD_CONSTANT));
+            Map.entry("constant", TokenType.KEYWORD_CONSTANT),
+            Map.entry("global", TokenType.KEYWORD_GLOBAL));
 
 }

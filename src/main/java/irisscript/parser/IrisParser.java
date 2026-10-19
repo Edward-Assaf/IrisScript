@@ -36,10 +36,25 @@ public final class IrisParser {
         while (!this.tokens.isAtEnd()) {
             int startIndex = this.tokens.getPosition();
             Token startToken = this.tokens.peek();
-            boolean isDeclaration = startToken.type() == TokenType.KEYWORD_FUNCTION;
+            boolean isDeclaration = (startToken.type() == TokenType.KEYWORD_FUNCTION)
+                    || (startToken.type() == TokenType.KEYWORD_GLOBAL
+                            && this.tokens.peek(1).type() == TokenType.KEYWORD_FUNCTION);
             try {
-                if (isDeclaration) {
-                    declarations.add(parseFunctionDeclaration());
+                if (this.tokens.match(TokenType.KEYWORD_GLOBAL)) {
+                    Token globalToken = this.tokens.previous();
+                    if (tokens.check(TokenType.KEYWORD_FUNCTION)) {
+                        declarations.add(parseFunctionDeclaration(true, globalToken));
+                    } else if (tokens.match(TokenType.KEYWORD_VARIABLE, TokenType.KEYWORD_CONSTANT)) {
+                        boolean isConstant = tokens.previous().type() == TokenType.KEYWORD_CONSTANT;
+                        statements.add(parseVariableOrConstantDeclaration(tokens.previous(), isConstant, true,
+                                globalToken));
+                    } else {
+                        reportError("E1012", "Expected function or variable declaration after 'global'",
+                                this.tokens.peek().span());
+                        throw new ParseException();
+                    }
+                } else if (this.tokens.check(TokenType.KEYWORD_FUNCTION)) {
+                    declarations.add(parseFunctionDeclaration(false, this.tokens.peek()));
                 } else {
                     statements.add(parseStatement());
                 }
@@ -65,8 +80,8 @@ public final class IrisParser {
     // Declarations
     // ==========================================
 
-    private FunctionDeclaration parseFunctionDeclaration() {
-        Token funcKeyword = tokens.consume(); // 'function'
+    private FunctionDeclaration parseFunctionDeclaration(boolean isGlobal, Token declarationStart) {
+        tokens.consume(); // 'function'
         Token nameToken = consume(TokenType.IDENTIFIER, "E1009", "Expected function name");
         TypeNode returnType = parseType();
         consume(TokenType.DELIMITER_LPAREN, "E1008", "Expected '(' after function return type");
@@ -87,8 +102,8 @@ public final class IrisParser {
         }
         consume(TokenType.DELIMITER_RPAREN, "E1003", "Expected ')' after parameters");
         BlockStatement body = parseBlockStatement();
-        SourceSpan span = SourceSpan.covering(funcKeyword.span(), body.span());
-        return new FunctionDeclaration(nameToken.lexeme(), parameters, returnType, body, span);
+        SourceSpan span = SourceSpan.covering(declarationStart.span(), body.span());
+        return new FunctionDeclaration(nameToken.lexeme(), parameters, returnType, body, span, isGlobal);
     }
 
     // ==========================================
@@ -96,11 +111,16 @@ public final class IrisParser {
     // ==========================================
 
     private Statement parseStatement() {
+        if (tokens.match(TokenType.KEYWORD_GLOBAL)) {
+            Token globalToken = tokens.previous();
+            reportError("E1013", "'global' declarations are only allowedat the top level", globalToken.span());
+            throw new ParseException();
+        }
         if (tokens.match(TokenType.KEYWORD_VARIABLE)) {
-            return parseVariableOrConstantDeclaration(tokens.previous(), false);
+            return parseVariableOrConstantDeclaration(tokens.previous(), false, false, tokens.previous());
         }
         if (tokens.match(TokenType.KEYWORD_CONSTANT)) {
-            return parseVariableOrConstantDeclaration(tokens.previous(), true);
+            return parseVariableOrConstantDeclaration(tokens.previous(), true, false, tokens.previous());
         }
         if (tokens.check(TokenType.KEYWORD_IF)) {
             return parseIfStatement();
@@ -123,7 +143,8 @@ public final class IrisParser {
         return parseExpressionStatement();
     }
 
-    private VariableDeclarationStatement parseVariableOrConstantDeclaration(Token keywordToken, boolean isConstant) {
+    private VariableDeclarationStatement parseVariableOrConstantDeclaration(Token keywordToken, boolean isConstant,
+            boolean isGlobal, Token declarationStart) {
         Token nameToken = consume(TokenType.IDENTIFIER, "E1009", "Expected variable name");
         TypeNode type = null;
         if (isTypeStart(tokens.peek().type())) {
@@ -136,8 +157,8 @@ public final class IrisParser {
             reportError("E1010", "Constant '" + nameToken.lexeme() + "' must be initialized", nameToken.span());
         }
         Token semicolon = consume(TokenType.DELIMITER_SEMICOLON, "E1005", "Expected ';' after variable declaration");
-        SourceSpan span = spanFrom(keywordToken, semicolon);
-        return new VariableDeclarationStatement(nameToken.lexeme(), type, initializer, isConstant, span);
+        SourceSpan span = SourceSpan.covering(declarationStart.span(), semicolon.span());
+        return new VariableDeclarationStatement(nameToken.lexeme(), type, initializer, isConstant, span, isGlobal);
     }
 
     private IfStatement parseIfStatement() {
@@ -524,7 +545,7 @@ public final class IrisParser {
     private boolean isStatementStart(TokenType type) {
         return switch (type) {
             case KEYWORD_IF, KEYWORD_WHILE, KEYWORD_RETURN, KEYWORD_BREAK, KEYWORD_SKIP, KEYWORD_VARIABLE,
-                    KEYWORD_CONSTANT, DELIMITER_LBRACE ->
+                    KEYWORD_CONSTANT, DELIMITER_LBRACE, KEYWORD_GLOBAL ->
                 true;
             default -> false;
         };

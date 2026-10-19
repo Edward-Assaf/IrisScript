@@ -8,7 +8,7 @@ import irisscript.ast.types.TypeNode;
 import irisscript.source.SourceSpan;
 
 public final record FunctionDeclaration(String name, List<ParameterDeclaration> parameters, TypeNode returnType,
-        BlockStatement body, SourceSpan span) implements Declaration {
+        BlockStatement body, SourceSpan span, boolean isGlobal) implements Declaration {
 
     public FunctionDeclaration {
         Objects.requireNonNull(name, "name must not be null");
