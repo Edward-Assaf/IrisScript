@@ -476,7 +476,7 @@ The code generator transpiles the verified ASTs into idiomatic Java source code:
 ### CLI Syntax
 
 ```bash
-irisscript <command> [options] <files...> [-- <program-args...>]
+iris <command> [options] <files...> [-- <program-args...>]
 ```
 
 ### Commands
