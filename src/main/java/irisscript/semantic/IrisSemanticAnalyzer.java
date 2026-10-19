@@ -32,35 +32,43 @@ public final class IrisSemanticAnalyzer {
 
     private int loopDepth = 0;
 
+    private final SemanticModel semanticModel = new SemanticModel();
+
+    private CompilationUnit currentUnit;
+
     public IrisSemanticAnalyzer(DiagnosticsCollector diagnosticsCollector) {
         this.diagnosticsCollector = Objects.requireNonNull(diagnosticsCollector,
                 "diagnosticsCollector must not be null");
     }
 
-    public void analyze(List<CompilationUnit> units) {
+    public SemanticModel analyze(List<CompilationUnit> units) {
         Objects.requireNonNull(units, "units must not be null");
         for (CompilationUnit unit : units) {
             unitScopes.put(unit, new Scope(globalScope));
             collectGlobalDeclarations(unit);
         }
         for (CompilationUnit unit : units) {
+            this.currentUnit = unit;
             this.loopDepth = 0;
             this.currentFunctionReturnType = null;
             analyzeBodies(unit);
         }
+        return semanticModel;
     }
 
     private void collectGlobalDeclarations(CompilationUnit unit) {
         for (Declaration declatation : unit.declarations()) {
             if (declatation instanceof FunctionDeclaration functionDeclaration) {
                 Scope scope = functionDeclaration.isGlobal() ? globalScope : unitScopes.get(unit);
-                collectFunctionSignature(functionDeclaration, scope);
+                semanticModel.bindTopLevelOwner(functionDeclaration, unit);
+                collectFunctionSignature(functionDeclaration, scope, unit);
             }
         }
         for (Statement statement : unit.statements()) {
             if (statement instanceof VariableDeclarationStatement variableStatement) {
                 Scope scope = variableStatement.isGlobal() ? globalScope : unitScopes.get(unit);
-                collectGlobalVariable(variableStatement, scope);
+                semanticModel.bindTopLevelOwner(variableStatement, unit);
+                collectGlobalVariable(variableStatement, scope, unit);
             }
         }
     }
@@ -76,7 +84,7 @@ public final class IrisSemanticAnalyzer {
         }
     }
 
-    private void collectFunctionSignature(FunctionDeclaration functionDeclaration, Scope scope) {
+    private void collectFunctionSignature(FunctionDeclaration functionDeclaration, Scope scope, CompilationUnit unit) {
         SemanticType returnType = resolveType(functionDeclaration.returnType(), true);
         List<SemanticType> parameterTypes = new ArrayList<>();
         for (ParameterDeclaration parameterDeclaration : functionDeclaration.parameters()) {
@@ -84,16 +92,17 @@ public final class IrisSemanticAnalyzer {
             parameterTypes.add(parameterType);
         }
         Symbol symbol = new Symbol(functionDeclaration.name(), SymbolKind.FUNCTION, returnType, false,
-                parameterTypes, functionDeclaration.span());
+                parameterTypes, functionDeclaration.span(), functionDeclaration, unit);
         if (!scope.define(symbol)) {
             reportDuplicateSymbol(functionDeclaration.name(), functionDeclaration.span(), scope);
         }
     }
 
-    private void collectGlobalVariable(VariableDeclarationStatement variableStatement, Scope scope) {
+    private void collectGlobalVariable(VariableDeclarationStatement variableStatement, Scope scope,
+            CompilationUnit unit) {
         SemanticType variableType = resolveType(variableStatement.type(), false);
         Symbol symbol = new Symbol(variableStatement.name(), SymbolKind.VARIABLE, variableType,
-                variableStatement.isConstant(), List.of(), variableStatement.span());
+                variableStatement.isConstant(), List.of(), variableStatement.span(), variableStatement, unit);
         if (!scope.define(symbol)) {
             reportDuplicateSymbol(variableStatement.name(), variableStatement.span(), scope);
         }
@@ -107,7 +116,8 @@ public final class IrisSemanticAnalyzer {
             for (ParameterDeclaration parameter : functionDeclaration.parameters()) {
                 SemanticType parameterType = resolveType(parameter.type(), false);
                 Symbol parameterSymbol = new Symbol(parameter.name(), SymbolKind.PARAMETER, parameterType,
-                        parameter.isConstant(), List.of(), parameter.span());
+                        parameter.isConstant(), List.of(), parameter.span(), parameter, currentUnit);
+                semanticModel.bindOwner(parameter, currentUnit);
                 if (!functionScope.define(parameterSymbol)) {
                     reportDuplicateSymbol(parameter.name(), parameter.span(), functionScope);
                 }
@@ -202,16 +212,17 @@ public final class IrisSemanticAnalyzer {
             SemanticType initializerType = analyzeExpression(initializer, scope);
             validateType(declaredType, initializerType, initializer.span());
         }
-        if (scope == unitScope) {
-            Optional<Symbol> symbol = unitScope.resolveLocal(variableStatement.name());
-            if (!symbol.isPresent()) {
-                throw new IllegalStateException("Global variable " + variableStatement.name()
-                        + " was not registered in first pass of the semantic analyzer");
+        if (variableStatement.isGlobal() || scope == unitScope) {
+            Scope declarationScope = variableStatement.isGlobal() ? globalScope : unitScope;
+            if (declarationScope.resolveLocal(variableStatement.name()).isEmpty()) {
+                throw new IllegalStateException("Top-level variable '" + variableStatement.name()
+                        + "' was not registered during declaration collection");
             }
             return;
         }
         Symbol symbol = new Symbol(variableStatement.name(), SymbolKind.VARIABLE, declaredType,
-                variableStatement.isConstant(), List.of(), variableStatement.span());
+                variableStatement.isConstant(), List.of(), variableStatement.span(), variableStatement, currentUnit);
+        semanticModel.bindOwner(variableStatement, currentUnit);
         if (!scope.define(symbol)) {
             reportDuplicateSymbol(variableStatement.name(), variableStatement.span(), scope);
         }
@@ -244,7 +255,7 @@ public final class IrisSemanticAnalyzer {
     }
 
     private SemanticType analyzeExpression(Expression expression, Scope scope) {
-        return switch (expression) {
+        SemanticType result = switch (expression) {
             case AssignmentExpression assignmentExpression -> analyzeAssignmentExpression(assignmentExpression, scope);
             case BinaryExpression binaryExpression -> analyzeBinaryExpression(binaryExpression, scope);
             case CallExpression callExpression -> analyzeCallExpression(callExpression, scope);
@@ -254,6 +265,8 @@ public final class IrisSemanticAnalyzer {
             case UnaryExpression unaryExpression -> analyzeUnaryExpression(unaryExpression, scope);
             case ErrorExpression errorExpression -> analyzeErrorExpression(errorExpression);
         };
+        semanticModel.bindExpressionType(expression, result.name());
+        return result;
     }
 
     private SemanticType analyzeAssignmentExpression(AssignmentExpression assignmentExpression, Scope scope) {
@@ -263,6 +276,7 @@ public final class IrisSemanticAnalyzer {
                     assignmentExpression.span());
             return SemanticType.ERROR;
         }
+        semanticModel.bindResolution(assignmentExpression, symbol.get().declaration());
         if (symbol.get().kind() == SymbolKind.FUNCTION) {
             reportError("E2011", "Cannot assign value to a function", assignmentExpression.span());
             return SemanticType.ERROR;
@@ -311,6 +325,8 @@ public final class IrisSemanticAnalyzer {
             }
             return SemanticType.ERROR;
         }
+        semanticModel.bindResolution(callExpression, symbol.get().declaration());
+        semanticModel.bindResolution(identifier, symbol.get().declaration());
         if (symbol.get().kind() != SymbolKind.FUNCTION) {
             reportError("E2018", "'" + identifier.name() + "' is not a function", identifier.span());
             for (Expression argument : callExpression.arguments()) {
@@ -345,6 +361,7 @@ public final class IrisSemanticAnalyzer {
                     identifierExpression.span());
             return SemanticType.ERROR;
         }
+        semanticModel.bindResolution(identifierExpression, symbol.get().declaration());
         if (symbol.get().kind() == SymbolKind.FUNCTION) {
             reportError("E2020", "Functions cannot be used as a variable value", identifierExpression.span());
             return SemanticType.ERROR;

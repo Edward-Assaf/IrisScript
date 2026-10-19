@@ -2,10 +2,19 @@ package irisscript.build;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import irisscript.ast.CompilationUnit;
 import irisscript.cli.CompilerOptions;
 import irisscript.diagnostics.DiagnosticsCollector;
+import irisscript.diagnostics.DiagnosticCode;
+import irisscript.diagnostics.DiagnosticSeverity;
+import irisscript.codegen.GeneratedSource;
+import irisscript.codegen.JavaCodeGenerator;
+import irisscript.semantic.SemanticModel;
 import irisscript.lexer.IrisLexer;
 import irisscript.lexer.TokenStream;
 import irisscript.parser.IrisParser;
@@ -25,14 +34,31 @@ public final class CompilerServices {
             CompilationUnit unit = parser.parse(tokens);
             units.add(unit);
         }
-        analyzer.analyze(units);
-        if (diagnosticsCollector.hasErrors()) {
+        SemanticModel semanticModel = analyzer.analyze(units);
+        if (diagnosticsCollector.hasErrors() || units.isEmpty()) {
             return;
+        }
+        List<GeneratedSource> generatedSources = new JavaCodeGenerator(semanticModel).generate(units, sourceManager);
+        Path outputDirectory = Path.of(options.getOutputDirectory()).toAbsolutePath().normalize();
+        try {
+            Files.createDirectories(outputDirectory);
+            for (GeneratedSource generated : generatedSources) {
+                Path outputFile = outputDirectory.resolve(generated.fileName()).normalize();
+                if (!outputFile.startsWith(outputDirectory)) {
+                    throw new IOException("Generated output path escapes the output directory");
+                }
+                Files.createDirectories(outputFile.getParent());
+                Files.writeString(outputFile, generated.source(), StandardCharsets.UTF_8);
+            }
+        } catch (Exception exception) {
+            diagnosticsCollector.report(DiagnosticSeverity.ERROR, new DiagnosticCode("E3001"),
+                    "Failed to generate Java source: " + exception.getMessage(), units.get(0).span());
         }
     }
 
     public static void run(SourceManager sourceManager, CompilerOptions options,
             DiagnosticsCollector diagnosticsCollector) {
+
     }
 
     public static void help() {
