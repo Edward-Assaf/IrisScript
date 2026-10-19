@@ -300,6 +300,7 @@ public final class IrisLexer {
             Map.entry("return", TokenType.KEYWORD_RETURN),
             Map.entry("void", TokenType.KEYWORD_VOID),
             Map.entry("constant", TokenType.KEYWORD_CONSTANT),
-            Map.entry("global", TokenType.KEYWORD_GLOBAL));
+            Map.entry("global", TokenType.KEYWORD_GLOBAL),
+            Map.entry("terminal", TokenType.KEYWORD_TERMINAL));
 
 }

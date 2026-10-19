@@ -137,6 +137,9 @@ public final class IrisParser {
         if (tokens.match(TokenType.KEYWORD_SKIP)) {
             return parseSkipStatement(tokens.previous());
         }
+        if (tokens.match(TokenType.KEYWORD_TERMINAL)) {
+            return parseTerminalStatement(tokens.previous());
+        }
         if (tokens.check(TokenType.DELIMITER_LBRACE)) {
             return parseBlockStatement();
         }
@@ -221,6 +224,13 @@ public final class IrisParser {
     private SkipStatement parseSkipStatement(Token skipToken) {
         Token semi = consume(TokenType.DELIMITER_SEMICOLON, "E1005", "Expected ';' after 'skip'");
         return new SkipStatement(spanFrom(skipToken, semi));
+    }
+
+    private TerminalStatement parseTerminalStatement(Token terminalToken) {
+        Expression expression = parseExpression();
+        Token semiColon = consume(TokenType.DELIMITER_SEMICOLON, "E1005", "Expected ';' after expression");
+        SourceSpan span = spanFrom(terminalToken, semiColon);
+        return new TerminalStatement(expression, span);
     }
 
     private BlockStatement parseBlockStatement() {
@@ -545,7 +555,7 @@ public final class IrisParser {
     private boolean isStatementStart(TokenType type) {
         return switch (type) {
             case KEYWORD_IF, KEYWORD_WHILE, KEYWORD_RETURN, KEYWORD_BREAK, KEYWORD_SKIP, KEYWORD_VARIABLE,
-                    KEYWORD_CONSTANT, DELIMITER_LBRACE, KEYWORD_GLOBAL ->
+                    KEYWORD_CONSTANT, DELIMITER_LBRACE, KEYWORD_GLOBAL, KEYWORD_TERMINAL ->
                 true;
             default -> false;
         };

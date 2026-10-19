@@ -30,12 +30,13 @@ public class Main {
         CompilerOptions options = arguments.options();
         DiagnosticsCollector diagnosticsCollector = new DiagnosticsCollector();
         DiagnosticsFormatter diagnosticsFormatter = new ANSIFormatter(sourceManager, options.usesColor());
+        int exitCode = 0;
         switch (arguments.command()) {
             case BUILD:
                 CompilerServices.build(sourceManager, options, diagnosticsCollector);
                 break;
             case RUN:
-                CompilerServices.run(sourceManager, options, diagnosticsCollector);
+                exitCode = CompilerServices.run(sourceManager, options, diagnosticsCollector);
                 break;
             case HELP:
                 CompilerServices.help();
@@ -48,6 +49,9 @@ public class Main {
         }
         if (diagnosticsCollector.hasErrors()) {
             System.exit(1);
+        }
+        if (exitCode != 0) {
+            System.exit(exitCode);
         }
     }
 

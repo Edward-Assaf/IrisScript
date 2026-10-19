@@ -50,6 +50,7 @@ public final class JavaCodeGenerator {
             String className = toClassName(stem) + "Module" + unit.span().sourceID();
             classNames.put(unit, className);
         }
+        boolean deferTopLevelExecution = !hasAnyMainDeclaration(units) && hasExecutableTopLevelStatements(units);
         List<GeneratedSource> result = new ArrayList<>();
         result.add(generateGlobals(units));
         for (CompilationUnit unit : units) {
@@ -61,7 +62,10 @@ public final class JavaCodeGenerator {
             emitLine("public final class " + currentClassName + " {");
             indent++;
             emitTopLevelFields(unit);
-            emitTopLevelInitializer(unit);
+            emitTopLevelInitializer(unit, deferTopLevelExecution);
+            if (deferTopLevelExecution && hasExecutableTopLevelStatements(unit)) {
+                emitTopLevelStatementsMethod(unit);
+            }
             for (Declaration declaration : unit.declarations()) {
                 if (declaration instanceof FunctionDeclaration function && !function.isGlobal()) {
                     emitFunction(function);
@@ -73,7 +77,108 @@ public final class JavaCodeGenerator {
             emitLine("}");
             result.add(new GeneratedSource("irisscript/generated/" + currentClassName + ".java", out.toString()));
         }
+        GeneratedSource launcher = generateLauncher(units);
+        if (launcher != null) {
+            result.add(launcher);
+        }
         return List.copyOf(result);
+    }
+
+    private GeneratedSource generateLauncher(List<CompilationUnit> units) {
+        List<FunctionDeclaration> mains = new ArrayList<>();
+        for (CompilationUnit unit : units) {
+            for (Declaration declaration : unit.declarations()) {
+                if (declaration instanceof FunctionDeclaration function && function.name().equals("main")) {
+                    mains.add(function);
+                }
+            }
+        }
+        if (!mains.isEmpty() && mains.size() != 1) {
+            return null;
+        }
+        boolean hasUserMain = !mains.isEmpty();
+        FunctionDeclaration main = hasUserMain ? mains.get(0) : null;
+        String invocation;
+        if (hasUserMain) {
+            if (!main.parameters().isEmpty() || main.returnType() == null || !"void".equals(main.returnType().name())) {
+                return null;
+            }
+            if (main.isGlobal()) {
+                invocation = "IrisGlobals." + nameMangler.mangle("main") + "();";
+            } else {
+                CompilationUnit owner = semanticModel.ownerOf(main).orElse(null);
+                String ownerClass = owner == null ? null : classNames.get(owner);
+                if (ownerClass == null) {
+                    return null;
+                }
+                invocation = ownerClass + "." + nameMangler.mangle("main") + "();";
+            }
+        } else {
+            if (!hasExecutableTopLevelStatements(units)) {
+                return null;
+            }
+            invocation = null;
+        }
+        StringBuilder launcher = new StringBuilder();
+        launcher.append("package irisscript.generated;\n\n")
+                .append("public final class IrisLauncher {\n")
+                .append("    private IrisLauncher() {}\n\n")
+                .append("    public static void main(String[] args) throws Exception {\n")
+                .append("        Class.forName(\"irisscript.generated.IrisGlobals\");\n");
+        for (CompilationUnit unit : units) {
+            String className = classNames.get(unit);
+            launcher.append("        Class.forName(\"irisscript.generated.").append(className).append("\");\n");
+        }
+        if (hasUserMain) {
+            launcher.append("        ").append(invocation).append("\n");
+        } else {
+            for (CompilationUnit unit : units) {
+                if (hasExecutableTopLevelStatements(unit)) {
+                    launcher.append("        ")
+                            .append(classNames.get(unit))
+                            .append(".__irisRunTopLevelStatements();\n");
+                }
+            }
+        }
+        launcher.append("    }\n").append("}\n");
+        return new GeneratedSource("irisscript/generated/IrisLauncher.java", launcher.toString());
+    }
+
+    private boolean hasAnyMainDeclaration(List<CompilationUnit> units) {
+        for (CompilationUnit unit : units) {
+            for (Declaration declaration : unit.declarations()) {
+                if (declaration instanceof FunctionDeclaration function && function.name().equals("main")) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean hasExecutableTopLevelStatements(List<CompilationUnit> units) {
+        for (CompilationUnit unit : units) {
+            if (hasExecutableTopLevelStatements(unit)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean hasExecutableTopLevelStatements(CompilationUnit unit) {
+        return unit.statements().stream().anyMatch(statement -> !(statement instanceof VariableDeclarationStatement));
+    }
+
+    private void emitTopLevelStatementsMethod(CompilationUnit unit) {
+        emitLine("");
+        emitLine("static void __irisRunTopLevelStatements() {");
+        indent++;
+        for (Statement statement : unit.statements()) {
+            if (!(statement instanceof VariableDeclarationStatement)) {
+                emitStatement(statement);
+            }
+        }
+        indent--;
+        emitLine("}");
     }
 
     private GeneratedSource generateGlobals(List<CompilationUnit> units) {
@@ -134,12 +239,14 @@ public final class JavaCodeGenerator {
         }
     }
 
-    private void emitTopLevelInitializer(CompilationUnit unit) {
-        boolean hasExecutable = unit.statements().stream()
-                .anyMatch(statement -> statement instanceof VariableDeclarationStatement variable
-                        ? !variable.isGlobal() && variable.initializer() != null
-                        : true);
-        if (!hasExecutable) {
+    private void emitTopLevelInitializer(CompilationUnit unit, boolean deferExecutableStatements) {
+        boolean hasInitializer = unit.statements().stream().anyMatch(statement -> {
+            if (statement instanceof VariableDeclarationStatement variable) {
+                return !variable.isGlobal() && variable.initializer() != null;
+            }
+            return !deferExecutableStatements;
+        });
+        if (!hasInitializer) {
             return;
         }
         emitLine("");
@@ -153,7 +260,7 @@ public final class JavaCodeGenerator {
                     emitExpression(variable.initializer());
                     out.append(";\n");
                 }
-            } else {
+            } else if (!deferExecutableStatements) {
                 emitStatement(statement);
             }
         }
@@ -247,6 +354,12 @@ public final class JavaCodeGenerator {
             }
             case BreakStatement ignored -> emitLine("break;");
             case SkipStatement ignored -> emitLine("continue;");
+            case TerminalStatement terminal -> {
+                emitIndent();
+                out.append("System.out.print(");
+                emitExpression(terminal.expression());
+                out.append(");\n");
+            }
             case ErrorStatement ignored -> throw new IllegalStateException("Cannot generate Java from ErrorStatement");
         }
     }
@@ -310,8 +423,7 @@ public final class JavaCodeGenerator {
                 } else {
                     out.append('(');
                     emitExpression(binary.left());
-                    out.append(' ')
-                            .append(mapOperator(binary.operator())).append(' ');
+                    out.append(' ').append(mapOperator(binary.operator())).append(' ');
                     emitExpression(binary.right());
                     out.append(')');
                 }

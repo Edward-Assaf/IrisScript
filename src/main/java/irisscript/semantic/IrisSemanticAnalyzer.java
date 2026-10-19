@@ -143,6 +143,7 @@ public final class IrisSemanticAnalyzer {
             case VariableDeclarationStatement variableStatement ->
                 analyzeVariableStatement(variableStatement, scope, unitScope);
             case WhileStatement whileStatement -> analyzeWhileStatement(whileStatement, scope, unitScope);
+            case TerminalStatement terminalStatement -> analyzeTerminalStatement(terminalStatement, scope);
             case ErrorStatement errorStatement -> analyzeErrorStatement(errorStatement);
         }
     }
@@ -236,6 +237,14 @@ public final class IrisSemanticAnalyzer {
             analyzeStatement(whileStatement.body(), scope, unitScope);
         } finally {
             loopDepth--;
+        }
+    }
+
+    private void analyzeTerminalStatement(TerminalStatement terminalStatement, Scope scope) {
+        SemanticType expressionType = analyzeExpression(terminalStatement.expression(), scope);
+        if (expressionType == SemanticType.VOID) {
+            reportError("E2025", "'terminal' statement requires a non-void expression",
+                    terminalStatement.expression().span());
         }
     }
 
