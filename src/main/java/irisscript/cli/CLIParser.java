@@ -7,23 +7,24 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
-import irisscript.build.CompilerServices;
-
 final class CLIParser {
 
     public static CLIArguments parse(String[] rawArguments) {
         if (rawArguments.length == 0) {
-            CompilerServices.help();
-            return CLIArguments.error("No source file was provided");
+            return CLIArguments.success(CLICommands.HELP, new CompilerOptions(), List.of());
         }
         String baseCommand = rawArguments[0].toLowerCase();
         CLICommands command = switch (baseCommand) {
             case "build" -> CLICommands.BUILD;
             case "run" -> CLICommands.RUN;
+            case "help" -> CLICommands.HELP;
             default -> CLICommands.UNKNOWN;
         };
         if (command == CLICommands.UNKNOWN) {
             return CLIArguments.error("Unknown command: " + rawArguments[0]);
+        }
+        if (command == CLICommands.HELP) {
+            return CLIArguments.success(CLICommands.HELP, new CompilerOptions(), List.of());
         }
         CompilerOptions options = new CompilerOptions();
         List<String> sourceFilesPaths = new ArrayList<>();

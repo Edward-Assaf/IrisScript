@@ -39,6 +39,7 @@ public class Main {
                 break;
             case HELP:
                 CompilerServices.help();
+                break;
             default:
                 throw new IllegalStateException("Unexpected command: " + arguments.command());
         }
