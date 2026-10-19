@@ -18,3 +18,11 @@
 # 6. Explicitly allow the src directory and all of its contents (source files)
 !src/
 !src/**
+
+# 7. Explicitly allow the vscode-extension directory and all of its contents
+!vscode-extension/
+!vscode-extension/**
+
+# 8. Explicitly allow .vscode settings directory
+!.vscode/
+!.vscode/**

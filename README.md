@@ -29,7 +29,8 @@ This repository contains the complete specification, compiler pipeline, diagnost
   - [4. Semantic Analysis and Binding (IrisSemanticAnalyzer)](#4-semantic-analysis-and-binding-irissemanticanalyzer)
   - [5. Java Code Generation (JavaCodeGenerator)](#5-java-code-generation-javacodegenerator)
   - [6. Compilation and Runtime Launcher (CompilerServices)](#6-compilation-and-runtime-launcher-compilerservices)
-- [CLI Reference and Tooling](#cli-reference-and-tooling)
+- [CLI Reference](#cli-reference)
+- [Tooling and VS Code Extension](#tooling-and-vs-code-extension)
 - [Comprehensive Code Examples](#comprehensive-code-examples)
 - [License](#license)
 
@@ -75,15 +76,19 @@ The compiler includes dedicated command-line launcher scripts:
 
 Both scripts automatically detect if the project has been built, invoke `mvn compile` if needed, set up the classpath, and launch `irisscript.cli.Main`.
 
-Make the Unix script executable:
+The Unix `iris` script includes the standard `#!/usr/bin/env bash` shebang and is already pre-configured with executable permissions in Git. If you cloned the repository, it is ready to run immediately:
 
 ```bash
-chmod +x ./iris
+./iris run hello.iris
 ```
+
+*(Note: If you downloaded the repository as a ZIP archive instead of cloning via Git, file permissions might not be preserved. In that case, make it executable once: `chmod +x ./iris`)*
 
 ---
 
 ## Quick Start Guide
+
+> **Recommended:** Install the [IrisScript Language Support](./vscode-extension/irisscript-language-support) VS Code extension for syntax highlighting, one-click run, and real-time error checking. All you need is **Java 23+** — no PATH setup required.
 
 ### 1. Script Mode (Hello World)
 
@@ -117,7 +122,11 @@ function main void() {
 Run:
 
 ```bash
+# Windows
 .\iris.bat run program.iris
+
+# Linux / macOS
+./iris run program.iris
 ```
 
 ---
@@ -471,7 +480,7 @@ The code generator transpiles the verified ASTs into idiomatic Java source code:
 
 ---
 
-## CLI Reference and Tooling
+## CLI Reference
 
 ### CLI Syntax
 
@@ -614,3 +623,31 @@ function main void() {
     }
 }
 ```
+
+---
+
+## Tooling and VS Code Extension
+
+IrisScript includes an official VS Code extension located in [`vscode-extension/irisscript-language-support`](./vscode-extension/irisscript-language-support).
+
+### Features
+
+- **Syntax Highlighting**: Scopes all 19 keywords, 5 primitive types, operators, string escapes, numbers, and comments across all VS Code color themes.
+- **Run & Compile Buttons**: `▶` (Run) and `✔` (Compile) buttons appear in the editor title bar whenever a `.iris` file is open.
+- **Real-Time Error Highlighting**: Live diagnostics engine runs the compiler in the background as you type (debounced 350 ms), rendering squiggly underlines and populating the **Problems** tab.
+- **Bundled Standalone Compiler**: Ships with `bin/iris.jar` — the complete IrisScript compiler pre-packaged inside the extension. Only **Java 23+** is required by the user.
+
+### User Requirements (Marketplace Install)
+
+| Requirement | Details |
+|:---|:---|
+| Java 23+ JDK | Must be available in the system `PATH` (`java` and `javac`). |
+| VS Code 1.80+ | Minimum supported editor version. |
+
+No separate IrisScript CLI download, Maven, or PATH configuration is required.
+
+---
+
+## License
+
+This project is licensed under the MIT License.
