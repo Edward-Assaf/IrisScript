@@ -1,5 +1,6 @@
 {
   "name": "irisscript-language-support",
+  "publisher": "edward-assaf",
   "displayName": "IrisScript Language Support",
   "description": "Language support, syntax highlighting, diagnostics, and runner for IrisScript",
   "version": "0.0.1",
