@@ -7,11 +7,14 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
+import irisscript.build.CompilerServices;
+
 final class CLIParser {
 
     public static CLIArguments parse(String[] rawArguments) {
         if (rawArguments.length == 0) {
-            return CLIArguments.error("No arguments were provided");
+            CompilerServices.help();
+            return CLIArguments.error("No source file was provided");
         }
         String baseCommand = rawArguments[0].toLowerCase();
         CLICommands command = switch (baseCommand) {

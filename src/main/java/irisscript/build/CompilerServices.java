@@ -26,10 +26,25 @@ public final class CompilerServices {
             units.add(unit);
         }
         analyzer.analyze(units);
+        if (diagnosticsCollector.hasErrors()) {
+            return;
+        }
     }
 
     public static void run(SourceManager sourceManager, CompilerOptions options,
             DiagnosticsCollector diagnosticsCollector) {
+    }
+
+    public static void help() {
+        System.out.println("IrisScript compiler v1.0");
+        System.out.println("Usage: irisscript <command> [options]");
+        System.out.println("Commands:");
+        System.out.println("  build  Build the project and compile source code to Java Source Code");
+        System.out.println("  run    Build the project and run it by invoking java runtime environment");
+        System.out.println("  help   Show this help message");
+        System.out.println("Options:");
+        System.out.println("  [-o / --output]    set a specified output directory");
+        System.out.println("  [-nc / --no-color] report diagnostics without terminal color codes");
     }
 
 }
