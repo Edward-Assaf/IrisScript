@@ -3,6 +3,9 @@ const cp = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const {
+	registerCompletionProvider
+} = require("./completion");
 
 /**
  * Resolves the execution target for IrisScript.
@@ -141,7 +144,7 @@ function runDiagnostics(document, diagnosticCollection) {
 				if (fs.existsSync(targetPath)) {
 					fs.unlinkSync(targetPath);
 				}
-			} catch {}
+			} catch { }
 		}
 
 		const rawOutput = (stdout || '') + '\n' + (stderr || '');
@@ -184,7 +187,7 @@ function runDiagnostics(document, diagnosticCollection) {
 function activate(context) {
 	const diagnosticCollection = vscode.languages.createDiagnosticCollection('irisscript');
 	context.subscriptions.push(diagnosticCollection);
-
+	registerCompletionProvider(context);
 	let activeTerminal = null;
 
 	// --- 1. Run Command (Editor Title Run Button) ---
