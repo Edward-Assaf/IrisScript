@@ -128,7 +128,7 @@ public final class ANSIFormatter implements DiagnosticsFormatter {
         }
         int offset = Math.min(span.startOffset(), sourceFile.getContentsLength());
         StringBuilder output = new StringBuilder();
-        output.append(Paths.get(sourceFile.getName()).getFileName())
+        output.append(Paths.get(sourceFile.getName()))
                 .append(':')
                 .append(sourceFile.getLineNumber(offset))
                 .append(':')

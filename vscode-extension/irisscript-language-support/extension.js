@@ -75,11 +75,14 @@ function resolveCompiler(documentUri) {
 /**
  * Builds command string for terminal execution
  */
-function buildTerminalCommand(compiler, subCommand, filePath) {
+function buildTerminalCommand(compiler, subCommand, filePaths) {
+	const sourceArguments = filePaths.map(filePath => `"${filePath}"`).join(' ');
+
 	if (compiler.type === 'jar') {
-		return `java -jar "${compiler.path}" ${subCommand} "${filePath}"`;
+		return `java -jar "${compiler.path}" ${subCommand} ${sourceArguments}`;
 	}
-	return `${getShellPrefix()}"${compiler.path}" ${subCommand} "${filePath}"`;
+
+	return `${getShellPrefix()}"${compiler.path}" ${subCommand} ${sourceArguments}`;
 }
 
 /**
@@ -102,179 +105,544 @@ function stripAnsi(str) {
 	return str.replace(/\u001B\[[0-9;]*m/g, '');
 }
 
-/**
- * Parses compiler output and updates VS Code Diagnostics
- */
-function runDiagnostics(document, diagnosticCollection) {
-	if (document.languageId !== 'irisscript' || document.isUntitled) {
+function isIrisDocument(document) {
+	return document.languageId === 'irisscript'
+		&& !document.isUntitled
+		&& document.uri.scheme === 'file'
+		&& document.uri.fsPath.toLowerCase().endsWith('.iris');
+}
+
+async function getProjectUris(preferredUri) {
+	const files = new Map();
+
+	const discovered = await vscode.workspace.findFiles(
+		'**/*.iris',
+		'**/{node_modules,.git,target,build}/**'
+	);
+
+	for (const uri of discovered) {
+		files.set(uri.toString(), uri);
+	}
+
+	// Include open documents, even when their contents are unsaved.
+	for (const document of vscode.workspace.textDocuments) {
+		if (isIrisDocument(document)) {
+			files.set(document.uri.toString(), document.uri);
+		}
+	}
+
+	// Include the triggering file if it was not returned by findFiles.
+	if (preferredUri
+		&& preferredUri.scheme === 'file'
+		&& preferredUri.fsPath.toLowerCase().endsWith('.iris')) {
+		files.set(preferredUri.toString(), preferredUri);
+	}
+
+	return [...files.values()].sort(
+		(a, b) => a.fsPath.localeCompare(b.fsPath)
+	);
+}
+
+async function collectDiagnosticSources(uris, tempRoot) {
+	const sources = [];
+	const compilerPathToUri = new Map();
+
+	for (let i = 0; i < uris.length; i++) {
+		const uri = uris[i];
+
+		const document = vscode.workspace.textDocuments.find(
+			doc => doc.uri.toString() === uri.toString()
+		);
+
+		let text;
+
+		if (document) {
+			text = document.getText();
+		} else {
+			try {
+				text = fs.readFileSync(uri.fsPath, 'utf8');
+			} catch {
+				// The file may have been deleted since discovery.
+				continue;
+			}
+		}
+
+		let compilerPath = uri.fsPath;
+
+		if (document && document.isDirty) {
+			// Give each temporary source a unique path. This avoids
+			// collisions when different directories contain the same name.
+			compilerPath = path.join(
+				tempRoot,
+				'sources',
+				String(i),
+				path.basename(uri.fsPath)
+			);
+
+			fs.mkdirSync(path.dirname(compilerPath), {
+				recursive: true
+			});
+
+			fs.writeFileSync(compilerPath, text, 'utf8');
+		}
+
+		const source = {
+			uri,
+			text,
+			compilerPath
+		};
+
+		sources.push(source);
+
+		compilerPathToUri.set(
+			normalizedPath(compilerPath),
+			uri
+		);
+	}
+
+	return {
+		sources,
+		compilerPathToUri
+	};
+}
+
+function parseProjectDiagnostics(output, sourceInfo) {
+	const diagnosticsByUri = new Map(
+		sourceInfo.sources.map(source => [
+			source.uri.toString(),
+			[]
+		])
+	);
+
+	const lines = stripAnsi(output).split(/\r?\n/);
+
+	// Greedy path matching also accommodates Windows drive-letter colons.
+	const headerPattern =
+		/^(.+):(\d+):(\d+):\s*(error|warning|info)\[([^\]]+)\]:\s*(.*)$/;
+
+	for (let i = 0; i < lines.length; i++) {
+		const match = lines[i].match(headerPattern);
+		if (!match) continue;
+
+		const [
+			,
+			reportedPath,
+			lineText,
+			columnText,
+			severityText,
+			code,
+			message
+		] = match;
+
+		const uri = sourceInfo.compilerPathToUri.get(
+			normalizedPath(reportedPath)
+		);
+
+		// Never attach an unidentifiable diagnostic to the active editor.
+		if (!uri) {
+			console.warn(
+				`Could not map IrisScript diagnostic path: ${reportedPath}`
+			);
+			continue;
+		}
+
+		const source = sourceInfo.sources.find(
+			item => item.uri.toString() === uri.toString()
+		);
+
+		if (!source) continue;
+
+		const sourceLines = source.text.split(/\r?\n/);
+
+		const line = Math.max(
+			0,
+			Math.min(Number(lineText) - 1, sourceLines.length - 1)
+		);
+
+		const text = sourceLines[line] || '';
+
+		const column = Math.max(
+			0,
+			Math.min(Number(columnText) - 1, text.length)
+		);
+
+		// ANSIFormatter prints the source line followed by its caret line.
+		// Recover the actual span instead of underlining the entire line.
+		const caretLine = lines[i + 2] || '';
+		const caretMatch = caretLine.match(/^\s*\|\s*(\^+)/);
+
+		let length = caretMatch ? caretMatch[1].length : 0;
+
+		// Fallback for compiler output that lacks a caret excerpt.
+		if (length === 0) {
+			const word = text.slice(column).match(/^[A-Za-z_]\w*/);
+			length = word ? word[0].length : 1;
+		}
+
+		const endColumn = Math.min(
+			text.length,
+			column + Math.max(1, length)
+		);
+
+		const range = new vscode.Range(
+			line,
+			column,
+			line,
+			Math.max(column, endColumn)
+		);
+
+		let severity = vscode.DiagnosticSeverity.Error;
+
+		if (severityText.toLowerCase() === 'warning') {
+			severity = vscode.DiagnosticSeverity.Warning;
+		} else if (severityText.toLowerCase() === 'info') {
+			severity = vscode.DiagnosticSeverity.Information;
+		}
+
+		const diagnostic = new vscode.Diagnostic(
+			range,
+			`[${code}] ${message}`,
+			severity
+		);
+
+		diagnostic.source = 'irisscript';
+		diagnostic.code = code;
+
+		diagnosticsByUri.get(uri.toString()).push(diagnostic);
+	}
+
+	return diagnosticsByUri;
+}
+
+function normalizedPath(filePath) {
+	const resolved = path.normalize(path.resolve(filePath));
+	return process.platform === 'win32'
+		? resolved.toLowerCase()
+		: resolved;
+}
+
+async function runProjectDiagnostics(
+	preferredUri,
+	diagnosticCollection,
+	runId,
+	isCurrentRun
+) {
+	const uris = await getProjectUris(preferredUri);
+
+	if (!isCurrentRun(runId)) return;
+
+	if (uris.length === 0) {
+		diagnosticCollection.clear();
 		return;
 	}
 
-	const filePath = document.uri.fsPath;
-	const compiler = resolveCompiler(document.uri);
-	const cwd = path.dirname(filePath);
-
-	// When unsaved changes exist in memory, write to a temp file so the compiler checks live code
-	let targetPath = filePath;
-	let isTemp = false;
-	const tempDir = path.join(os.tmpdir(), 'irisscript_diagnostics');
+	const tempRoot = fs.mkdtempSync(
+		path.join(os.tmpdir(), 'irisscript-diagnostics-')
+	);
 
 	try {
-		if (document.isDirty) {
-			if (!fs.existsSync(tempDir)) {
-				fs.mkdirSync(tempDir, { recursive: true });
-			}
-			targetPath = path.join(tempDir, path.basename(filePath));
-			fs.writeFileSync(targetPath, document.getText(), 'utf8');
-			isTemp = true;
-		}
-	} catch {
-		targetPath = filePath;
-		isTemp = false;
-	}
+		const sourceInfo = await collectDiagnosticSources(
+			uris,
+			tempRoot
+		);
 
-	const tempOut = path.join(tempDir, 'out');
-	const command = compiler.type === 'jar'
-		? `java -jar "${compiler.path}" build -nc -o "${tempOut}" "${targetPath}"`
-		: `"${compiler.path}" build -nc -o "${tempOut}" "${targetPath}"`;
-
-	cp.exec(command, { cwd }, (error, stdout, stderr) => {
-		if (isTemp) {
-			try {
-				if (fs.existsSync(targetPath)) {
-					fs.unlinkSync(targetPath);
-				}
-			} catch { }
-		}
-
-		const rawOutput = (stdout || '') + '\n' + (stderr || '');
-		const output = stripAnsi(rawOutput);
-
-		const diagnostics = [];
-		// Regex matches: filename:line:col: severity[CODE]: message
-		// Example: hello.iris:10:5: error[E2001]: Variable 'x' is not declared
-		const regex = /^(.+?):(\d+):(\d+):\s*(error|warning|info)\[([^\]]+)\]:\s*(.*)$/gm;
-		let match;
-
-		while ((match = regex.exec(output)) !== null) {
-			const [, , lineStr, colStr, severityStr, code, message] = match;
-			const rawLine = Math.max(0, parseInt(lineStr, 10) - 1);
-			const line = Math.min(rawLine, Math.max(0, document.lineCount - 1));
-			const docLine = document.lineAt(line);
-			const col = Math.min(Math.max(0, parseInt(colStr, 10) - 1), docLine.text.length);
-
-			let severity = vscode.DiagnosticSeverity.Error;
-			if (severityStr.toLowerCase() === 'warning') {
-				severity = vscode.DiagnosticSeverity.Warning;
-			} else if (severityStr.toLowerCase() === 'info') {
-				severity = vscode.DiagnosticSeverity.Information;
-			}
-
-			// Highlight from column to word end or line end
-			const endCol = Math.max(col + 1, docLine.text.length);
-			const range = new vscode.Range(line, col, line, endCol);
-
-			const diag = new vscode.Diagnostic(range, `[${code}] ${message}`, severity);
-			diag.source = 'irisscript';
-			diag.code = code;
-			diagnostics.push(diag);
-		}
-
-		diagnosticCollection.set(document.uri, diagnostics);
-	});
-}
-
-function activate(context) {
-	const diagnosticCollection = vscode.languages.createDiagnosticCollection('irisscript');
-	context.subscriptions.push(diagnosticCollection);
-	registerCompletionProvider(context);
-	let activeTerminal = null;
-
-	// --- 1. Run Command (Editor Title Run Button) ---
-	const runDisposable = vscode.commands.registerCommand('irisscript.runFile', async (uri) => {
-		let targetUri = uri;
-		if (!targetUri && vscode.window.activeTextEditor) {
-			targetUri = vscode.window.activeTextEditor.document.uri;
-		}
-
-		if (!targetUri) {
-			vscode.window.showWarningMessage('No active IrisScript file to run.');
+		if (!isCurrentRun(runId) || sourceInfo.sources.length === 0) {
 			return;
 		}
 
-		const editor = vscode.window.activeTextEditor;
-		if (editor && editor.document.isDirty) {
-			await editor.document.save();
+		const compiler = resolveCompiler(
+			preferredUri || sourceInfo.sources[0].uri
+		);
+
+		const outputDirectory = path.join(tempRoot, 'out');
+
+		const sourcePaths = sourceInfo.sources.map(
+			source => source.compilerPath
+		);
+
+		const command = compiler.type === 'jar'
+			? `java -jar "${compiler.path}" build -nc -o "${outputDirectory}" ${sourcePaths.map(p => `"${p}"`).join(' ')}`
+			: `${getShellPrefix()} "${compiler.path}" build -nc -o "${outputDirectory}" ${sourcePaths.map(p => `"${p}"`).join(' ')}`;
+
+		const cwd = path.dirname(sourceInfo.sources[0].uri.fsPath);
+
+		await new Promise(resolve => {
+			cp.exec(
+				command,
+				{
+					cwd,
+					windowsHide: true,
+					maxBuffer: 10 * 1024 * 1024
+				},
+				(error, stdout, stderr) => {
+					if (!isCurrentRun(runId)) {
+						resolve();
+						return;
+					}
+
+					const output = `${stdout || ''}\n${stderr || ''}`;
+
+					const parsed = parseProjectDiagnostics(
+						output,
+						sourceInfo
+					);
+
+					// Clear stale results, including results for deleted files.
+					diagnosticCollection.clear();
+
+					// Set results for EVERY project source, even if it has
+					// no errors and even if its editor is not currently open.
+					for (const source of sourceInfo.sources) {
+						diagnosticCollection.set(
+							source.uri,
+							parsed.get(source.uri.toString()) || []
+						);
+					}
+
+					if (error && !output.trim()) {
+						vscode.window.showErrorMessage(
+							`IrisScript diagnostics could not run: ${error.message}`
+						);
+					}
+
+					resolve();
+				}
+			);
+		});
+	} catch (error) {
+		if (isCurrentRun(runId)) {
+			vscode.window.showErrorMessage(
+				`IrisScript diagnostics failed: ${error.message}`
+			);
 		}
-
-		const filePath = targetUri.fsPath;
-		const compiler = resolveCompiler(targetUri);
-
-		if (!activeTerminal || activeTerminal.exitStatus !== undefined) {
-			activeTerminal = vscode.window.createTerminal('IrisScript');
+	} finally {
+		// The compiler has finished, so temporary source copies can be removed.
+		try {
+			fs.rmSync(tempRoot, {
+				recursive: true,
+				force: true
+			});
+		} catch {
+			// Temporary-file cleanup is best effort.
 		}
-
-		activeTerminal.show(true);
-		activeTerminal.sendText(buildTerminalCommand(compiler, 'run', filePath));
-	});
-
-	// --- 2. Build / Compile Command ---
-	const buildDisposable = vscode.commands.registerCommand('irisscript.buildFile', async (uri) => {
-		let targetUri = uri;
-		if (!targetUri && vscode.window.activeTextEditor) {
-			targetUri = vscode.window.activeTextEditor.document.uri;
-		}
-
-		if (!targetUri) return;
-
-		const editor = vscode.window.activeTextEditor;
-		if (editor && editor.document.isDirty) {
-			await editor.document.save();
-		}
-
-		const filePath = targetUri.fsPath;
-		const compiler = resolveCompiler(targetUri);
-
-		if (!activeTerminal || activeTerminal.exitStatus !== undefined) {
-			activeTerminal = vscode.window.createTerminal('IrisScript');
-		}
-
-		activeTerminal.show(true);
-		activeTerminal.sendText(buildTerminalCommand(compiler, 'build', filePath));
-	});
-
-	// --- 3. Error Highlighting Triggers ---
-	if (vscode.window.activeTextEditor) {
-		runDiagnostics(vscode.window.activeTextEditor.document, diagnosticCollection);
 	}
+}
 
+function activate(context) {
+	// ------------------------------------------------------------
+	// 1. Diagnostics and completion
+	// ------------------------------------------------------------
+
+	const diagnosticCollection =
+		vscode.languages.createDiagnosticCollection('irisscript');
+
+	context.subscriptions.push(diagnosticCollection);
+
+	registerCompletionProvider(context);
+
+	// ------------------------------------------------------------
+	// 2. Shared state
+	// ------------------------------------------------------------
+
+	let activeTerminal = null;
+	let diagnosticRunId = 0;
 	let debounceTimer = null;
 
-	context.subscriptions.push(
-		// Live error checking as the user types (debounced by 350ms)
-		vscode.workspace.onDidChangeTextDocument(event => {
-			if (event.document.languageId === 'irisscript') {
-				if (debounceTimer) {
-					clearTimeout(debounceTimer);
+	const isCurrentRun = runId => runId === diagnosticRunId;
+
+	// ------------------------------------------------------------
+	// 3. Schedule project-wide diagnostics
+	// ------------------------------------------------------------
+
+	function scheduleProjectDiagnostics(preferredUri, delay = 350) {
+		diagnosticRunId++;
+
+		const runId = diagnosticRunId;
+
+		if (debounceTimer !== null) {
+			clearTimeout(debounceTimer);
+		}
+
+		debounceTimer = setTimeout(() => {
+			debounceTimer = null;
+
+			runProjectDiagnostics(
+				preferredUri,
+				diagnosticCollection,
+				runId,
+				isCurrentRun
+			);
+		}, delay);
+	}
+
+	// ------------------------------------------------------------
+	// 4. Run/build all IrisScript files in the workspace
+	// ------------------------------------------------------------
+
+	async function executeProjectCommand(subCommand, targetUri) {
+		const uris = await getProjectUris(targetUri);
+
+		if (uris.length === 0) {
+			vscode.window.showWarningMessage(
+				'No IrisScript files found in the workspace.'
+			);
+			return;
+		}
+
+		// Save modified IrisScript documents before running the compiler.
+		const projectUris = new Set(
+			uris.map(uri => uri.toString())
+		);
+
+		for (const document of vscode.workspace.textDocuments) {
+			if (
+				projectUris.has(document.uri.toString()) &&
+				document.isDirty
+			) {
+				const saved = await document.save();
+
+				if (!saved) {
+					vscode.window.showErrorMessage(
+						'Could not save ${ document.uri.fsPath }.' +
+						'Save it and try again.'
+					);
+					return;
 				}
-				debounceTimer = setTimeout(() => {
-					runDiagnostics(event.document, diagnosticCollection);
-				}, 350);
 			}
-		}),
-		vscode.window.onDidChangeActiveTextEditor(editor => {
-			if (editor) {
-				runDiagnostics(editor.document, diagnosticCollection);
+		}
+
+		const compiler = resolveCompiler(targetUri || uris[0]);
+
+		if (
+			!activeTerminal ||
+			activeTerminal.exitStatus !== undefined
+		) {
+			activeTerminal =
+				vscode.window.createTerminal('IrisScript');
+		}
+
+		activeTerminal.show(true);
+
+		activeTerminal.sendText(
+			buildTerminalCommand(
+				compiler,
+				subCommand,
+				uris.map(uri => uri.fsPath)
+			)
+		);
+	}
+
+	// ------------------------------------------------------------
+	// 5. Register Run command
+	// ------------------------------------------------------------
+
+	const runDisposable = vscode.commands.registerCommand(
+		'irisscript.runFile',
+		async uri => {
+			const targetUri =
+				uri ||
+				vscode.window.activeTextEditor?.document.uri;
+
+			if (!targetUri) {
+				vscode.window.showWarningMessage(
+					'No active IrisScript file to run.'
+				);
+				return;
 			}
-		}),
-		vscode.workspace.onDidSaveTextDocument(doc => {
-			runDiagnostics(doc, diagnosticCollection);
-		}),
-		vscode.workspace.onDidCloseTextDocument(doc => {
-			diagnosticCollection.delete(doc.uri);
-		}),
+
+			await executeProjectCommand('run', targetUri);
+		}
+	);
+
+	// ------------------------------------------------------------
+	// 6. Register Build command
+	// ------------------------------------------------------------
+
+	const buildDisposable = vscode.commands.registerCommand(
+		'irisscript.buildFile',
+		async uri => {
+			const targetUri = uri ||
+				vscode.window.activeTextEditor?.document.uri;
+
+			if (!targetUri) {
+				vscode.window.showWarningMessage(
+					'No active IrisScript file to build.'
+				);
+				return;
+			}
+
+			await executeProjectCommand('build', targetUri);
+		}
+	);
+
+	context.subscriptions.push(
 		runDisposable,
 		buildDisposable
+	);
+
+	// ------------------------------------------------------------
+	// 7. React to edits, saves, and opened documents
+	// ------------------------------------------------------------
+
+	context.subscriptions.push(
+		vscode.workspace.onDidChangeTextDocument(event => {
+			if (isIrisDocument(event.document)) {
+				scheduleProjectDiagnostics(event.document.uri);
+			}
+		}),
+
+		vscode.workspace.onDidSaveTextDocument(document => {
+			if (isIrisDocument(document)) {
+				scheduleProjectDiagnostics(document.uri, 0);
+			}
+		}),
+
+		vscode.workspace.onDidOpenTextDocument(document => {
+			if (isIrisDocument(document)) {
+				scheduleProjectDiagnostics(document.uri, 0);
+			}
+		}),
+
+		vscode.window.onDidChangeActiveTextEditor(editor => {
+			if (editor && isIrisDocument(editor.document)) {
+				scheduleProjectDiagnostics(
+					editor.document.uri,
+					0
+				);
+			}
+		})
+	);
+
+	// ------------------------------------------------------------
+	// 8. React to external file changes
+	// ------------------------------------------------------------
+
+	const watcher =
+		vscode.workspace.createFileSystemWatcher('**/*.iris');
+
+	context.subscriptions.push(
+		watcher,
+
+		watcher.onDidCreate(uri => {
+			scheduleProjectDiagnostics(uri, 0);
+		}),
+
+		watcher.onDidChange(uri => {
+			scheduleProjectDiagnostics(uri, 0);
+		}),
+
+		watcher.onDidDelete(uri => {
+			scheduleProjectDiagnostics(uri, 0);
+		})
+	);
+
+	// ------------------------------------------------------------
+	// 9. Initial project-wide diagnostics
+	// ------------------------------------------------------------
+
+	scheduleProjectDiagnostics(
+		vscode.window.activeTextEditor?.document.uri,
+		0
 	);
 }
 

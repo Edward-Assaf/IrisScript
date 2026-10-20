@@ -113,7 +113,7 @@ public final class IrisParser {
     private Statement parseStatement() {
         if (tokens.match(TokenType.KEYWORD_GLOBAL)) {
             Token globalToken = tokens.previous();
-            reportError("E1013", "'global' declarations are only allowedat the top level", globalToken.span());
+            reportError("E1013", "'global' declarations are only allowed at the top level", globalToken.span());
             throw new ParseException();
         }
         if (tokens.match(TokenType.KEYWORD_VARIABLE)) {

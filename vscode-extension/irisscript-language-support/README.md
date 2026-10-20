@@ -1,6 +1,6 @@
 # IrisScript Runner and Syntax Checker for VS Code
 
-Official Visual Studio Code extension for the **IrisScript** programming language (v1.0).
+Official Visual Studio Code extension for the **IrisScript** programming language (v1.0.1).
 
 ---
 
@@ -10,6 +10,7 @@ Official Visual Studio Code extension for the **IrisScript** programming languag
 - **Run & Compile Buttons**: Easily compile and execute any `.iris` file with a single click using the integrated editor title bar `▶` (Play) and `✔` (Compile) buttons.
 - **Real-Time Error Checking**: Live diagnostics engine that catches syntax errors, unhandled control flow paths, and type mismatches as you type, rendering instant squiggly warnings and populating the **Problems** tab.
 - **Zero-Configuration Bundled Compiler**: Includes the standalone `iris.jar` compiler directly inside the extension. No separate CLI download or environment PATH configuration required!
+- **Auto-Completion**: Auto-completion for keywords, types, and variables.
 
 ---
 

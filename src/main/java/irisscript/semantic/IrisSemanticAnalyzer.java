@@ -428,6 +428,10 @@ public final class IrisSemanticAnalyzer {
 
     private SemanticType analyzeNumericBinary(BinaryExpression expression, SemanticType leftType,
             SemanticType rightType) {
+        if (rightType == SemanticType.TEXT && leftType == SemanticType.TEXT
+                && expression.operator() == BinaryOperator.ADD) {
+            return SemanticType.TEXT;
+        }
         if (!isNumeric(leftType) || !isNumeric(rightType)) {
             reportError("E2013", "Operator " + expression.operator() + " requires numeric operands", expression.span());
             return SemanticType.ERROR;

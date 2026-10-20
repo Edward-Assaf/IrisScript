@@ -1,4 +1,4 @@
-# IrisScript Language (v1.0)
+# IrisScript Language (v1.0.1)
 
 IrisScript is a statically typed, structured programming language designed for clarity, safety, and seamless execution on the Java Virtual Machine. IrisScript compiles directly into clean, idiomatic Java 23 source code, which is then compiled and executed via the host Java toolchain.
 
@@ -38,7 +38,7 @@ This repository contains the complete specification, compiler pipeline, diagnost
 
 ## Overview and Core Philosophy
 
-IrisScript v1.0 is engineered around four guiding principles:
+IrisScript v1.0.1 is engineered around four guiding principles:
 
 1. **Explicitness and Determinism**: Types, mutability, and cross-file visibility are explicitly declared. Variable shadowing in the same scope and implicit narrowing conversions are disallowed.
 2. **Definite Safety**: Non-void functions undergo control flow reachability analysis to guarantee that every possible execution path returns a value.
@@ -225,7 +225,7 @@ Expressions are evaluated according to the following precedence hierarchy (lowes
 | 5 | Bitwise AND | `&` | Left | `integer` |
 | 6 | Equality | `==`, `!=` | Left | Compatible types, `text` via `Objects.equals` |
 | 7 | Relational | `<`, `<=`, `>`, `>=` | Left | `integer`, `decimal` |
-| 8 | Additive | `+`, `-` | Left | `integer`, `decimal` |
+| 8 | Additive | `+`, `-` | Left | `integer`, `decimal`, `+` concatenates `text` |
 | 9 | Multiplicative | `*`, `/`, `%` | Left | `*`, `/` on numbers; `%` strictly on `integer` |
 | 10 | Unary | `!`, `+`, `-` | Right | `!` on `boolean`; `+`, `-` on numbers |
 | 11 (Highest)| Primary & Call | `()`, literals, identifiers, calls | N/A | Function calls, grouped expressions |

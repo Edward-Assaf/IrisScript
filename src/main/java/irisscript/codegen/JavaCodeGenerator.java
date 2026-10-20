@@ -34,6 +34,8 @@ public final class JavaCodeGenerator {
 
     private String currentClassName;
 
+    private FunctionDeclaration currentFunction;
+
     private static final String GLOBAL_CLASS = "IrisGlobals";
 
     public JavaCodeGenerator(SemanticModel semanticModel) {
@@ -257,7 +259,7 @@ public final class JavaCodeGenerator {
                 if (!variable.isGlobal() && variable.initializer() != null) {
                     emitIndent();
                     out.append(nameMangler.mangle(variable.name())).append(" = ");
-                    emitExpression(variable.initializer());
+                    emitExpressionAs(variable.type().name().toUpperCase(), variable.initializer());
                     out.append(";\n");
                 }
             } else if (!deferExecutableStatements) {
@@ -269,25 +271,32 @@ public final class JavaCodeGenerator {
     }
 
     private void emitFunction(FunctionDeclaration function) {
-        emitLine("");
-        String visibility = function.isGlobal() ? "public " : "";
-        StringBuilder signature = new StringBuilder(visibility + "static "
-                + typeMapper.map(function.returnType()) + " " + nameMangler.mangle(function.name()) + "(");
-        for (int i = 0; i < function.parameters().size(); i++) {
-            if (i > 0) {
-                signature.append(", ");
+        FunctionDeclaration previousFunction = currentFunction;
+        currentFunction = function;
+        try {
+            emitLine("");
+            String visibility = function.isGlobal() ? "public " : "";
+            StringBuilder signature = new StringBuilder(visibility + "static "
+                    + typeMapper.map(function.returnType()) + " " + nameMangler.mangle(function.name()) + "(");
+            for (int i = 0; i < function.parameters().size(); i++) {
+                if (i > 0) {
+                    signature.append(", ");
+                }
+                ParameterDeclaration parameter = function.parameters().get(i);
+                signature.append(typeMapper.map(parameter.type())).append(' ')
+                        .append(nameMangler.mangle(parameter.name()));
             }
-            ParameterDeclaration parameter = function.parameters().get(i);
-            signature.append(typeMapper.map(parameter.type())).append(' ').append(nameMangler.mangle(parameter.name()));
+            signature.append(") {");
+            emitLine(signature.toString());
+            indent++;
+            for (Statement statement : function.body().statements()) {
+                emitStatement(statement);
+            }
+            indent--;
+            emitLine("}");
+        } finally {
+            currentFunction = previousFunction;
         }
-        signature.append(") {");
-        emitLine(signature.toString());
-        indent++;
-        for (Statement statement : function.body().statements()) {
-            emitStatement(statement);
-        }
-        indent--;
-        emitLine("}");
     }
 
     @SuppressWarnings("unused")
@@ -310,7 +319,7 @@ public final class JavaCodeGenerator {
                 out.append(typeMapper.map(variable.type())).append(' ').append(nameMangler.mangle(variable.name()));
                 if (variable.initializer() != null) {
                     out.append(" = ");
-                    emitExpression(variable.initializer());
+                    emitExpressionAs(variable.type().name().toUpperCase(), variable.initializer());
                 }
                 out.append(";\n");
             }
@@ -324,7 +333,11 @@ public final class JavaCodeGenerator {
                 out.append("return");
                 if (ret.value() != null) {
                     out.append(' ');
-                    emitExpression(ret.value());
+                    if (currentFunction != null) {
+                        emitExpressionAs(currentFunction.returnType().name().toUpperCase(), ret.value());
+                    } else {
+                        emitExpression(ret.value());
+                    }
                 }
                 out.append(";\n");
             }
@@ -431,7 +444,14 @@ public final class JavaCodeGenerator {
             case AssignmentExpression assignment -> {
                 emitResolvedReference(assignment, assignment.name());
                 out.append(" = ");
-                emitExpression(assignment.value());
+                AstNode declaration = semanticModel.resolvedDeclaration(assignment).orElse(null);
+                if (declaration instanceof VariableDeclarationStatement variable) {
+                    emitExpressionAs(variable.type().name().toUpperCase(), assignment.value());
+                } else if (declaration instanceof ParameterDeclaration parameter) {
+                    emitExpressionAs(parameter.type().name().toUpperCase(), assignment.value());
+                } else {
+                    emitExpression(assignment.value());
+                }
             }
             case CallExpression call -> {
                 if (call.callee() instanceof IdentifierExpression identifier) {
@@ -449,12 +469,29 @@ public final class JavaCodeGenerator {
                     if (i > 0) {
                         out.append(", ");
                     }
-                    emitExpression(call.arguments().get(i));
+                    Expression argument = call.arguments().get(i);
+                    AstNode declaration = semanticModel.resolvedDeclaration(call).orElse(null);
+                    if (declaration instanceof FunctionDeclaration function && i < function.parameters().size()) {
+                        emitExpressionAs(function.parameters().get(i).type().name().toUpperCase(), argument);
+                    } else {
+                        emitExpression(argument);
+                    }
                 }
                 out.append(')');
             }
             case ErrorExpression ignored ->
                 throw new IllegalStateException("Cannot generate Java from ErrorExpression");
+        }
+    }
+
+    private void emitExpressionAs(String targetType, Expression expression) {
+        String sourceType = semanticModel.expressionTypeName(expression).orElse("");
+        if ("INTEGER".equals(targetType) && "DECIMAL".equals(sourceType)) {
+            out.append("((int) (");
+            emitExpression(expression);
+            out.append("))");
+        } else {
+            emitExpression(expression);
         }
     }
 
