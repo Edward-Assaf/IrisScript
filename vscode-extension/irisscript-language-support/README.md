@@ -1,4 +1,4 @@
-# IrisScript Language Support for VS Code
+# IrisScript Runner and Syntax Checker for VS Code
 
 Official Visual Studio Code extension for the **IrisScript** programming language (v1.0).
 

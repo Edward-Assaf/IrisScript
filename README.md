@@ -88,7 +88,7 @@ The Unix `iris` script includes the standard `#!/usr/bin/env bash` shebang and i
 
 ## Quick Start Guide
 
-> **Recommended:** Install the [IrisScript Language Support](./vscode-extension/irisscript-language-support) VS Code extension for syntax highlighting, one-click run, and real-time error checking. All you need is **Java 23+** — no PATH setup required.
+> **Recommended:** Install the [IrisScript Runner and Syntax Checker](./vscode-extension/irisscript-language-support) VS Code extension for syntax highlighting, one-click run, and real-time error checking. All you need is **Java 23+** — no PATH setup required.
 
 ### 1. Script Mode (Hello World)
 
