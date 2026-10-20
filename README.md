@@ -1,8 +1,8 @@
-# IrisScript Language (v1.0.1)
+# IrisScript Language (v1.0.2)
 
-IrisScript is a statically typed, structured programming language designed for clarity, safety, and seamless execution on the Java Virtual Machine. IrisScript compiles directly into clean, idiomatic Java 23 source code, which is then compiled and executed via the host Java toolchain.
+IrisScript is a statically typed, structured programming language designed for clarity, safety, and seamless execution on the Java Virtual Machine. IrisScript compiles into Java source code, which is then compiled and executed using an installed Java Development Kit (JDK).
 
-This repository contains the complete specification, compiler pipeline, diagnostic engine, code generator, and CLI runtime for IrisScript Version 1.0.
+This repository contains the language specification, compiler pipeline, diagnostic engine, code generator, CLI runtime, and VS Code language support for IrisScript.
 
 ---
 
@@ -10,6 +10,10 @@ This repository contains the complete specification, compiler pipeline, diagnost
 
 - [Overview and Core Philosophy](#overview-and-core-philosophy)
 - [System Requirements and Installation](#system-requirements-and-installation)
+  - [Prerequisites](#prerequisites)
+  - [Building from Source](#building-from-source)
+  - [Platform Scripts](#platform-scripts)
+  - [JDK Discovery and Configuration](#jdk-discovery-and-configuration)
 - [Quick Start Guide](#quick-start-guide)
 - [Language Specification](#language-specification)
   - [Lexical Structure and Comments](#lexical-structure-and-comments)
@@ -29,6 +33,7 @@ This repository contains the complete specification, compiler pipeline, diagnost
   - [4. Semantic Analysis and Binding (IrisSemanticAnalyzer)](#4-semantic-analysis-and-binding-irissemanticanalyzer)
   - [5. Java Code Generation (JavaCodeGenerator)](#5-java-code-generation-javacodegenerator)
   - [6. Compilation and Runtime Launcher (CompilerServices)](#6-compilation-and-runtime-launcher-compilerservices)
+  - [7. JDK Discovery (JdkLocator)](#7-jdk-discovery-jdklocator)
 - [CLI Reference](#cli-reference)
 - [Tooling and VS Code Extension](#tooling-and-vs-code-extension)
 - [Comprehensive Code Examples](#comprehensive-code-examples)
@@ -38,12 +43,12 @@ This repository contains the complete specification, compiler pipeline, diagnost
 
 ## Overview and Core Philosophy
 
-IrisScript v1.0.1 is engineered around four guiding principles:
+IrisScript is built around four guiding principles:
 
-1. **Explicitness and Determinism**: Types, mutability, and cross-file visibility are explicitly declared. Variable shadowing in the same scope and implicit narrowing conversions are disallowed.
-2. **Definite Safety**: Non-void functions undergo control flow reachability analysis to guarantee that every possible execution path returns a value.
-3. **Frictionless Transpilation**: Rather than emitting raw bytecode or relying on a heavy custom runtime, IrisScript generates clean Java source code utilizing modern Java 23 features, enabling debugging, profiling, and straightforward integration with existing JVM infrastructure.
-4. **Resilient Diagnostics**: Lexer, parser, and semantic stages use structured error codes (`E0xxx`, `E1xxx`, `E2xxx`, `E3xxx`, `W2xxx`), secondary labels, and terminal ANSI color formatting to identify faults with precision.
+1. Explicitness and Determinism: Types, mutability, and cross-file visibility are explicitly declared. Variable shadowing in the same scope and implicit narrowing conversions are disallowed.
+2. Definite Safety: Non-void functions undergo control-flow reachability analysis to ensure every possible execution path returns a value.
+3. Frictionless Transpilation: IrisScript generates Java source code, enabling debugging, profiling, and integration with existing JVM infrastructure.
+4. Resilient Diagnostics: Lexer, parser, and semantic stages use structured error codes (E0xxx, E1xxx, E2xxx, E3xxx, W2xxx) and source locations to identify faults precisely.
 
 ---
 
@@ -51,83 +56,142 @@ IrisScript v1.0.1 is engineered around four guiding principles:
 
 ### Prerequisites
 
-- **Java Development Kit (JDK)**: Version 23 or newer. Ensure `javac` and `java` are available in your system `PATH`.
-- **Apache Maven**: Version 3.8 or newer.
-- **Operating System**: Windows, Linux, or macOS.
+- Java Development Kit (JDK): Version 23 or newer, provided this matches the project's configured Java target. IrisScript needs both java and javac to compile and execute generated Java programs.
+- Apache Maven: Version 3.8 or newer when building from source.
+- Operating System: Windows, Linux, or macOS.
+
+A JDK does not need to be discoverable exclusively through the system PATH. IrisScript's JDK discovery mechanism checks configured environment variables, the currently running JVM's installation, and executable locations in PATH.
 
 ### Building from Source
 
-Clone the repository and compile using Maven:
+Clone the repository and build it with Maven:
 
-```bash
-git clone https://github.com/Edward-Assaf/irisscript.git
-cd irisscript/irisscript-language
-mvn clean package
-```
+    git clone https://github.com/Edward-Assaf/IrisScript.git
+    cd IrisScript
+    mvn clean package
 
-This compiles all modules, runs any tests, and packages the compiler into `target/irisscript-language-1.0.jar`.
+The build compiles the project, runs configured tests, and packages the compiler into a JAR under target/.
+
+Adjust the working directory if your repository's Maven project is located in a subdirectory.
 
 ### Platform Scripts
 
-The compiler includes dedicated command-line launcher scripts:
+IrisScript can be launched through platform-specific scripts:
 
-- **Windows**: `iris.bat`
-- **Linux / macOS**: `iris`
+- Windows: iris.bat
+- Linux/macOS: iris
 
-Both scripts automatically detect if the project has been built, invoke `mvn compile` if needed, set up the classpath, and launch `irisscript.cli.Main`.
+These scripts provide a convenient CLI entry point. Their actual behavior depends on the scripts included in the distribution.
 
-The Unix `iris` script includes the standard `#!/usr/bin/env bash` shebang and is already pre-configured with executable permissions in Git. If you cloned the repository, it is ready to run immediately:
+On Linux or macOS, if the executable permission was not preserved:
 
-```bash
-./iris run hello.iris
-```
+    chmod +x ./iris
 
-*(Note: If you downloaded the repository as a ZIP archive instead of cloning via Git, file permissions might not be preserved. In that case, make it executable once: `chmod +x ./iris`)*
+Example on Linux/macOS:
+
+    ./iris run hello.iris
+
+Example on Windows PowerShell:
+
+    .\iris.bat run hello.iris
+
+### JDK Discovery and Configuration
+
+IrisScript uses JdkLocator to locate a complete JDK instead of assuming that java and javac are always located under the current JVM's java.home.
+
+The discovery process checks candidate locations in this order:
+
+1. IRISSCRIPT_JDK_HOME — an IrisScript-specific override.
+2. JAVA_HOME — the standard Java installation environment variable.
+3. java.home — the installation associated with the currently running JVM, followed by its parent directory where applicable.
+4. PATH — directories containing executable files.
+
+A candidate JDK is accepted only when both the Java runtime and Java compiler executables are present in the same bin directory.
+
+Typical JDK layout:
+
+    jdk/
+    ├── bin/
+    │   ├── java
+    │   └── javac
+    └── ...
+
+On Windows, the executables are typically named java.exe and javac.exe.
+
+#### Configuring a JDK
+
+Set either IRISSCRIPT_JDK_HOME or JAVA_HOME to the JDK root directory, not its bin directory.
+
+Windows PowerShell:
+
+    $env:JAVA_HOME = "C:\path\to\your\jdk"
+
+Or:
+
+    $env:IRISSCRIPT_JDK_HOME = "C:\path\to\your\jdk"
+
+Linux:
+
+    export JAVA_HOME="/path/to/your/jdk"
+
+Or:
+
+    export IRISSCRIPT_JDK_HOME="/path/to/your/jdk"
+
+macOS:
+
+    export JAVA_HOME="/path/to/your/jdk"
+
+Or:
+
+    export IRISSCRIPT_JDK_HOME="/path/to/your/jdk"
+
+Replace the example paths with the actual JDK installation directory.
+
+IRISSCRIPT_JDK_HOME takes precedence over JAVA_HOME. If a candidate is invalid or lacks either required executable, discovery continues to the next candidate.
+
+IrisScript does not scan the entire filesystem. It checks known configuration locations and directories listed in PATH.
+
+Important: JDK discovery inside IrisScript occurs only after the compiler JVM has started. If a launcher starts the compiler using java -jar, that initial Java invocation must itself be able to locate Java. Internal discovery cannot resolve a missing Java runtime before the compiler starts.
 
 ---
 
 ## Quick Start Guide
 
-> **Recommended:** Install the [IrisScript Runner and Syntax Checker](./vscode-extension/irisscript-language-support) VS Code extension for syntax highlighting, one-click run, and real-time error checking. All you need is **Java 23+** — no PATH setup required.
-
 ### 1. Script Mode (Hello World)
 
-Create a file named `hello.iris`:
+Create a file named hello.iris:
 
-```iris
-terminal "Hello, World!\n";
-```
+    terminal "Hello, World!\n";
 
 Run directly:
 
-```bash
-# Windows
-.\iris.bat run hello.iris
+Windows:
 
-# Linux / macOS
-./iris run hello.iris
-```
+    .\iris.bat run hello.iris
+
+Linux/macOS:
+
+    ./iris run hello.iris
 
 ### 2. Structured Program Mode (Main Function)
 
-Create `program.iris`:
+Create program.iris:
 
-```iris
-function main void() {
-    variable message text = "Welcome to IrisScript 1.0!\n";
-    terminal message;
-}
-```
+    function main void() {
+        variable message text = "Welcome to IrisScript 1.0!\n";
+        terminal message;
+    }
 
 Run:
 
-```bash
-# Windows
-.\iris.bat run program.iris
+Windows:
 
-# Linux / macOS
-./iris run program.iris
-```
+    .\iris.bat run program.iris
+
+Linux/macOS:
+
+    ./iris run program.iris
 
 ---
 
@@ -135,40 +199,45 @@ Run:
 
 ### Lexical Structure and Comments
 
-IrisScript source code is encoded in UTF-8. 
+IrisScript source code is encoded in UTF-8.
 
 #### Identifiers
-Identifiers must start with an ASCII letter (`a-z`, `A-Z`) or an underscore (`_`), followed by any combination of letters, digits (`0-9`), and underscores.
+
+Identifiers must start with an ASCII letter (a-z, A-Z) or an underscore (_), followed by any combination of letters, digits (0-9), and underscores.
 
 #### Keywords
-The following 19 reserved words cannot be used as identifiers:
 
-```
-boolean    break      constant   decimal    else
-elseif     false      function   global     if
-integer    return     skip       terminal   text
-true       variable   void       while
-```
+The following reserved words cannot be used as identifiers:
+
+    boolean    break      constant   decimal    else
+    elseif     false      function   global     if
+    integer    return     skip       terminal   text
+    true       variable   void       while
 
 #### Comments
-Both single-line and multi-line comments are supported:
 
-```iris
-// This is a single-line comment.
+Both single-line and multi-line comments are supported.
 
-/*
-   This is a multi-line
-   block comment.
-*/
-```
+Single-line comment:
+
+    // This is a single-line comment.
+
+Multi-line comment:
+
+    /*
+       This is a multi-line
+       block comment.
+    */
 
 #### String Escapes
-Text literals are enclosed in double quotes (`"..."`). The following escape sequences are recognized:
-- `\n`: Line feed (newline)
-- `\t`: Horizontal tab
-- `\r`: Carriage return
-- `\"`: Double quote
-- `\\`: Backslash
+
+Text literals are enclosed in double quotes. The following escape sequences are recognized:
+
+- \n: Line feed (newline)
+- \t: Horizontal tab
+- \r: Carriage return
+- \": Double quote
+- \\: Backslash
 
 ---
 
@@ -178,18 +247,20 @@ IrisScript provides five built-in types:
 
 | IrisScript Type | JVM Representation | Description | Example Literals |
 |:---|:---|:---|:---|
-| `integer` | `long` (64-bit signed) | Signed two's complement integer | `0`, `42`, `-1000` |
-| `decimal` | `double` (64-bit IEEE 754) | Double-precision floating-point | `3.14`, `0.0`, `-0.5` |
-| `text` | `java.lang.String` | Immutable UTF-16 character sequence | `"hello"`, `"line\n"` |
-| `boolean` | `boolean` | Logical truth values | `true`, `false` |
-| `void` | `void` | Absence of a return value | Allowed only on function return types |
+| integer | long (64-bit signed) | Signed two's complement integer | 0, 42, -1000 |
+| decimal | double (64-bit IEEE 754) | Double-precision floating-point | 3.14, 0.0, -0.5 |
+| text | java.lang.String | Immutable UTF-16 character sequence | "hello", "line\n" |
+| boolean | boolean | Logical truth values | true, false |
+| void | void | Absence of a return value | Allowed only on function return types |
 
 #### Numeric Conversion Semantics
-- **Widening (Implicit)**: An `integer` value can be implicitly widened to `decimal` without loss of precision in assignments and arithmetic expressions.
-- **Narrowing (Warning)**: Assigning a `decimal` to an `integer` emits warning `W2001` ("Potential loss of precision converting a decimal to an integer").
+
+- Widening (Implicit): An integer value can be implicitly widened to decimal in assignments and arithmetic expressions.
+- Narrowing (Warning): Assigning a decimal to an integer emits warning W2001, indicating potential loss of precision.
 
 #### Text Equality Semantics
-The equality operators (`==`, `!=`) applied to `text` operands generate `java.util.Objects.equals()` in the target code, ensuring structural equality rather than object identity.
+
+The equality operators (==, !=) applied to text operands generate java.util.Objects.equals() in the target code, ensuring structural equality rather than object identity.
 
 ---
 
@@ -197,234 +268,236 @@ The equality operators (`==`, `!=`) applied to `text` operands generate `java.ut
 
 Variables and constants are declared at the top level or within block statements.
 
-#### Mutable Variables (`variable`)
-```iris
-variable counter integer = 0;
-counter = counter + 1;
-```
+#### Mutable Variables (variable)
 
-#### Immutable Constants (`constant`)
+    variable counter integer = 0;
+    counter = counter + 1;
+
+#### Immutable Constants (constant)
+
 Constants cannot be reassigned once initialized. An initializer is mandatory:
-```iris
-constant MAX_RETRIES integer = 5;
-// MAX_RETRIES = 10; // Error: E2012
-```
+
+    constant MAX_RETRIES integer = 5;
+
+Reassigning MAX_RETRIES produces error E2012.
 
 ---
 
 ### Operators and Expression Precedence
 
-Expressions are evaluated according to the following precedence hierarchy (lowest to highest):
+Expressions are evaluated according to the following precedence hierarchy, from lowest to highest:
 
 | Precedence | Category | Operators | Associativity | Supported Types |
 |:---|:---|:---|:---|:---|
-| 1 (Lowest) | Assignment | `=` | Right | Variable name = Compatible Expression |
-| 2 | Logical OR | `\|\|` | Left | `boolean` |
-| 3 | Logical AND | `&&` | Left | `boolean` |
-| 4 | Bitwise OR | `\|` | Left | `integer` |
-| 5 | Bitwise AND | `&` | Left | `integer` |
-| 6 | Equality | `==`, `!=` | Left | Compatible types, `text` via `Objects.equals` |
-| 7 | Relational | `<`, `<=`, `>`, `>=` | Left | `integer`, `decimal` |
-| 8 | Additive | `+`, `-` | Left | `integer`, `decimal`, `+` concatenates `text` |
-| 9 | Multiplicative | `*`, `/`, `%` | Left | `*`, `/` on numbers; `%` strictly on `integer` |
-| 10 | Unary | `!`, `+`, `-` | Right | `!` on `boolean`; `+`, `-` on numbers |
-| 11 (Highest)| Primary & Call | `()`, literals, identifiers, calls | N/A | Function calls, grouped expressions |
+| 1 (Lowest) | Assignment | = | Right | Variable name = Compatible Expression |
+| 2 | Logical OR | || | Left | boolean |
+| 3 | Logical AND | && | Left | boolean |
+| 4 | Bitwise OR | | | Left | integer |
+| 5 | Bitwise AND | & | Left | integer |
+| 6 | Equality | ==, != | Left | Compatible types; text uses Objects.equals |
+| 7 | Relational | <, <=, >, >= | Left | integer, decimal |
+| 8 | Additive | +, - | Left | integer, decimal; + also concatenates text |
+| 9 | Multiplicative | *, /, % | Left | * and / on numbers; % strictly on integer |
+| 10 | Unary | !, +, - | Right | ! on boolean; + and - on numbers |
+| 11 (Highest) | Primary and Call | (), literals, identifiers, calls | N/A | Function calls and grouped expressions |
 
 ---
 
 ### Control Flow Statements
 
-#### Conditionals (`if`, `elseif`, `else`)
+#### Conditionals (if, elseif, else)
+
 Braces are mandatory for block bodies:
 
-```iris
-if (score >= 90) {
-    terminal "Grade: A\n";
-} elseif (score >= 80) {
-    terminal "Grade: B\n";
-} else {
-    terminal "Grade: C or below\n";
-}
-```
-
-The condition expression must evaluate strictly to `boolean`.
-
-#### Loops (`while`)
-The `while` loop continues executing as long as the condition remains `true`:
-
-```iris
-variable i integer = 0;
-while (i < 10) {
-    i = i + 1;
-    if (i == 5) {
-        skip; // Skips to next iteration (continue)
+    if (score >= 90) {
+        terminal "Grade: A\n";
+    } elseif (score >= 80) {
+        terminal "Grade: B\n";
+    } else {
+        terminal "Grade: C or below\n";
     }
-    if (i == 8) {
-        break; // Exits the loop
-    }
-    terminal i;
-    terminal "\n";
-}
-```
 
-- `break`: Immediately terminates the innermost loop.
-- `skip`: Bypasses the rest of the loop body and advances to the next iteration.
-- Using `break` or `skip` outside of a loop produces compile error `E2004` or `E2009`.
+The condition expression must evaluate strictly to boolean.
+
+#### Loops (while)
+
+The while loop continues executing as long as its condition remains true:
+
+    variable i integer = 0;
+
+    while (i < 10) {
+        i = i + 1;
+
+        if (i == 5) {
+            skip;
+        }
+
+        if (i == 8) {
+            break;
+        }
+
+        terminal i;
+        terminal "\n";
+    }
+
+- break: Immediately terminates the innermost loop.
+- skip: Bypasses the rest of the loop body and advances to the next iteration.
+- Using break or skip outside a loop produces a semantic error.
 
 ---
 
 ### Console Output: The Terminal Statement
 
-IrisScript uses the dedicated keyword `terminal` for standard output:
+IrisScript uses the dedicated keyword terminal for standard output:
 
-```iris
-terminal <expression>;
-```
+    terminal <expression>;
 
-- The expression must not be `void` (enforced by `E2025`).
-- The transpiler maps `terminal <expression>;` to `System.out.print(<expression>);`.
+- The expression must not be void.
+- The transpiler maps terminal <expression>; to System.out.print(<expression>);.
 
 ---
 
 ### Functions and Signatures
 
-Functions are defined with the `function` keyword, followed by the function name, return type, formal parameters, and a block body:
+Functions are defined with the function keyword, followed by the function name, return type, formal parameters, and a block body:
 
-```iris
-function add integer(variable a integer, variable b integer) {
-    return a + b;
-}
-```
+    function add integer(variable a integer, variable b integer) {
+        return a + b;
+    }
 
 #### Function Rules
-1. **Return Type Position**: The return type appears between the function name and the parameter list.
-2. **Parameters**: Every parameter must specify `variable` or `constant`, an identifier name, and an explicit type.
-3. **Definite Assignment & Returns**: For any non-void function, every possible control flow branch must conclude with a `return` statement carrying an expression (enforced by `E2024`).
-4. **Void Functions**: Functions with `void` return type may use bare `return;` statements or omit them. Returning an expression from a `void` function triggers error `E2007`.
+
+1. The return type appears between the function name and the parameter list.
+2. Every parameter must specify variable or constant, an identifier name, and an explicit type.
+3. For any non-void function, every possible control-flow branch must conclude with a return statement carrying an expression.
+4. Void functions may use bare return statements or omit them. Returning an expression from a void function triggers an error.
 
 ---
 
 ### Scope Rules: Unit-Local vs Global
 
-IrisScript supports modular compilation across multiple `.iris` files simultaneously.
+IrisScript supports modular compilation across multiple .iris files simultaneously.
 
 #### Unit-Local Declarations (Default)
-Any function or top-level variable declared without `global` is visible **only within the file in which it is defined**:
 
-```iris
-// Defined in FileA.iris
-function helper integer() {
-    return 42;
-}
-```
-`FileB.iris` cannot access `helper()`.
+Any function or top-level variable declared without global is visible only within the file in which it is defined.
 
-#### Global Declarations (`global`)
-Prefixing a declaration with `global` makes it accessible across all compilation units in the build:
+Example in FileA.iris:
 
-```iris
-// Defined in FileA.iris
-global variable appVersion text = "1.0.0";
+    function helper integer() {
+        return 42;
+    }
 
-global function computeBonus decimal(variable salary decimal) {
-    return salary * 0.15;
-}
-```
+FileB.iris cannot access helper() unless it is declared global.
 
-Now `FileB.iris` can call `computeBonus(...)` or read `appVersion` without import statements.
+#### Global Declarations (global)
+
+Prefixing a declaration with global makes it accessible across all compilation units in the build:
+
+    global variable appVersion text = "1.0.0";
+
+    global function computeBonus decimal(variable salary decimal) {
+        return salary * 0.15;
+    }
+
+Other source files in the same compilation can access these declarations without import statements.
 
 ---
 
 ### Program Entry Points and Execution Modes
 
-IrisScript supports two execution paradigms:
+IrisScript supports two execution paradigms.
 
 #### 1. Explicit Main Mode
-When at least one function named `main` exists across the compilation units:
-- Exactly **one** `main` function must exist.
-- It must have the signature: `function main void()` or `global function main void()`.
-- It must take **zero parameters** and return `void`.
-- Top-level executable statements across modules are not executed automatically in this mode; execution transfers directly to `main()`.
+
+When at least one function named main exists across the compilation units:
+
+- Exactly one main function must exist.
+- It must have the signature function main void() or global function main void().
+- It must take zero parameters and return void.
+- Top-level executable statements across modules are not executed automatically in this mode; execution transfers directly to main().
 
 #### 2. Top-Level Script Mode
-When no `main` function is defined:
-- Top-level executable statements in each `.iris` file are gathered into synthetic entry methods (`__irisRunTopLevelStatements()`).
+
+When no main function is defined:
+
+- Top-level executable statements in each .iris file are gathered into synthetic entry methods.
 - All top-level initializers and statements execute sequentially in the order files are supplied to the compiler.
 
 ---
 
 ## Diagnostic and Error Code Catalog
 
-The compiler features an informative, categorized error reporting system.
+The compiler features categorized error reporting.
 
-### Lexical Diagnostics (`E0xxx`)
-
-| Code | Severity | Description |
-|:---|:---|:---|
-| `E0001` | Error | Unterminated block comment (`/*` without matching `*/`). |
-| `E0002` | Error | Invalid decimal literal (failed floating-point parse). |
-| `E0003` | Error | Integer literal too large (exceeds 64-bit signed integer limits). |
-| `E0004` | Error | Unterminated text literal (missing closing `"`). |
-| `E0005` | Error | Invalid escape sequence inside text literal. |
-| `E0006` | Error | Unexpected character encountered. |
-
-### Syntactic Diagnostics (`E1xxx`)
+### Lexical Diagnostics (E0xxx)
 
 | Code | Severity | Description |
 |:---|:---|:---|
-| `E1001` | Error | Expected type name. |
-| `E1002` | Error | Expected expression. |
-| `E1003` | Error | Expected closing parenthesis `)`. |
-| `E1004` | Error | Invalid assignment target; target must be an identifier. |
-| `E1005` | Error | Expected semicolon `;`. |
-| `E1006` | Error | Expected closing brace `}`. |
-| `E1007` | Error | Expected opening brace `{`. |
-| `E1008` | Error | Expected opening parenthesis `(`. |
-| `E1009` | Error | Expected identifier name (function, variable, or parameter). |
-| `E1010` | Error | Constant declaration must have an initializer. |
-| `E1011` | Error | Expected `variable` or `constant` keyword in parameter declaration. |
-| `E1012` | Error | Expected function or variable declaration after `global` modifier. |
-| `E1013` | Error | `global` declaration attempted inside a local block (only top-level allowed). |
+| E0001 | Error | Unterminated block comment. |
+| E0002 | Error | Invalid decimal literal. |
+| E0003 | Error | Integer literal too large. |
+| E0004 | Error | Unterminated text literal. |
+| E0005 | Error | Invalid escape sequence inside text literal. |
+| E0006 | Error | Unexpected character encountered. |
 
-### Semantic Diagnostics (`E2xxx`, `W2xxx`)
+### Syntactic Diagnostics (E1xxx)
 
 | Code | Severity | Description |
 |:---|:---|:---|
-| `E2001` | Error | Unknown type name. |
-| `E2002` | Error | `void` type is not allowed in this position (e.g. variable or parameter type). |
-| `E2003` | Error | Duplicate declaration of symbol in the same scope (includes link to original declaration). |
-| `E2004` | Error | `break` statement outside of loop body. |
-| `E2005` | Error | Type mismatch between expected type and provided expression type. |
-| `E2006` | Error | `return` statement outside of function body. |
-| `E2007` | Error | Function declared as `void` cannot return an expression value. |
-| `E2008` | Error | Non-void function must return an expression value. |
-| `E2009` | Error | `skip` statement outside of loop body. |
-| `E2010` | Error | Unresolved identifier name. |
-| `E2011` | Error | Cannot assign a value to a function symbol. |
-| `E2012` | Error | Cannot reassign a variable declared as `constant`. |
-| `E2013` | Error | Operator requires numeric operands (`integer` or `decimal`). |
-| `E2014` | Error | Operator requires integer operands (e.g. `%`, `&`, `\|`). |
-| `E2015` | Error | Incompatible operand types for equality comparison. |
-| `E2016` | Error | Operator requires boolean operands (`&&`, `\|\|`). |
-| `E2017` | Error | Function call must target a named function. |
-| `E2018` | Error | Expression being invoked is not a function. |
-| `E2019` | Error | Argument count mismatch between call site and function declaration. |
-| `E2020` | Error | Functions cannot be passed or assigned as first-class variable values. |
-| `E2021` | Error | Unsupported literal value type. |
-| `E2022` | Error | Unary operator (`+`, `-`) requires a numeric operand. |
-| `E2023` | Error | Unary operator (`!`) requires a boolean operand. |
-| `E2024` | Error | Control flow analysis failure: not all execution paths return a value. |
-| `E2025` | Error | `terminal` statement requires a non-void expression. |
-| `W2001` | Warning | Potential loss of precision converting a `decimal` to an `integer`. |
+| E1001 | Error | Expected type name. |
+| E1002 | Error | Expected expression. |
+| E1003 | Error | Expected closing parenthesis. |
+| E1004 | Error | Invalid assignment target; target must be an identifier. |
+| E1005 | Error | Expected semicolon. |
+| E1006 | Error | Expected closing brace. |
+| E1007 | Error | Expected opening brace. |
+| E1008 | Error | Expected opening parenthesis. |
+| E1009 | Error | Expected identifier name. |
+| E1010 | Error | Constant declaration must have an initializer. |
+| E1011 | Error | Expected variable or constant keyword in parameter declaration. |
+| E1012 | Error | Expected function or variable declaration after global. |
+| E1013 | Error | Global declaration attempted inside a local block. |
 
-### Build and Execution Diagnostics (`E3xxx`)
+### Semantic Diagnostics (E2xxx, W2xxx)
 
 | Code | Severity | Description |
 |:---|:---|:---|
-| `E3001` | Error | Failed to generate Java source code to disk. |
-| `E3002` | Error | Invalid program entry: expected exactly one zero-argument `void` `main` function. |
-| `E3003` | Error | Program execution was interrupted. |
-| `E3004` | Error | Host JDK `javac` compilation or `java` execution failed. |
+| E2001 | Error | Unknown type name. |
+| E2002 | Error | Void type is not allowed in this position. |
+| E2003 | Error | Duplicate declaration of a symbol in the same scope. |
+| E2004 | Error | Break statement outside a loop body. |
+| E2005 | Error | Type mismatch between expected type and provided expression type. |
+| E2006 | Error | Return statement outside a function body. |
+| E2007 | Error | Void function cannot return an expression value. |
+| E2008 | Error | Non-void function must return an expression value. |
+| E2009 | Error | Skip statement outside a loop body. |
+| E2010 | Error | Unresolved identifier name. |
+| E2011 | Error | Cannot assign a value to a function symbol. |
+| E2012 | Error | Cannot reassign a constant. |
+| E2013 | Error | Operator requires numeric operands. |
+| E2014 | Error | Operator requires integer operands. |
+| E2015 | Error | Incompatible operand types for equality comparison. |
+| E2016 | Error | Operator requires boolean operands. |
+| E2017 | Error | Function call must target a named function. |
+| E2018 | Error | Expression being invoked is not a function. |
+| E2019 | Error | Argument count mismatch. |
+| E2020 | Error | Functions cannot be passed or assigned as first-class variable values. |
+| E2021 | Error | Unsupported literal value type. |
+| E2022 | Error | Unary plus or minus requires a numeric operand. |
+| E2023 | Error | Unary logical NOT requires a boolean operand. |
+| E2024 | Error | Not all execution paths return a value in a non-void function. |
+| E2025 | Error | Terminal statement requires a non-void expression. |
+| W2001 | Warning | Potential loss of precision converting decimal to integer. |
+
+### Build and Execution Diagnostics (E3xxx)
+
+| Code | Severity | Description |
+|:---|:---|:---|
+| E3001 | Error | Failed to generate Java source code to disk. |
+| E3002 | Error | Invalid program entry point. |
+| E3003 | Error | Program execution was interrupted. |
+| E3004 | Error | JDK discovery, Java compilation, or Java execution failed. |
 
 ---
 
@@ -432,51 +505,92 @@ The compiler features an informative, categorized error reporting system.
 
 The compiler is organized as an end-to-end multi-stage pipeline:
 
-```
-Source (.iris)
-   │
-   ▼
-[SourceManager] ──────────► Line & column tracking, UTF-8 buffer caching
-   │
-   ▼
-[IrisLexer] ──────────────► TokenStream (Tokens + SourceSpan)
-   │
-   ▼
-[IrisParser] ─────────────► AST (CompilationUnit, Declarations, Statements, Expressions)
-   │
-   ▼
-[IrisSemanticAnalyzer] ───► Two-pass symbol collection, reachability, SemanticModel
-   │
-   ▼
-[JavaCodeGenerator] ──────► Java 23 Source Files (IrisGlobals, Modules, IrisLauncher)
-   │
-   ▼
-[CompilerServices] ───────► Invokes `javac` to build bytecode, then `java` to execute
-```
+    Source (.iris)
+       |
+       v
+    SourceManager
+       |
+       v
+    IrisLexer
+       |
+       v
+    IrisParser
+       |
+       v
+    IrisSemanticAnalyzer
+       |
+       v
+    JavaCodeGenerator
+       |
+       v
+    CompilerServices
+       |
+       +--> JdkLocator
+       |
+       +--> javac
+       |
+       +--> java
 
 ### 1. Source Management
-The `SourceManager` loads `.iris` files, assigns continuous source IDs, maps byte offsets to 1-indexed line and column numbers, and caches line breaks to generate source code excerpts for errors.
 
-### 2. Lexical Analysis (`IrisLexer`)
-The lexer consumes UTF-8 characters and converts them into a stream of strongly-typed `Token` objects. Each token retains its `TokenType`, lexeme text, optional parsed literal value, and precise `SourceSpan`.
+SourceManager loads .iris files, assigns source IDs, maps offsets to line and column numbers, and caches line-break information to generate source excerpts for diagnostics.
 
-### 3. Syntactic Analysis (`IrisParser`)
-A recursive descent parser with precedence climbing constructs an Abstract Syntax Tree (AST) rooted in `CompilationUnit`. The parser performs panic-mode error recovery, synchronizing at statement and top-level declaration boundaries to collect multiple syntax errors per run.
+### 2. Lexical Analysis (IrisLexer)
 
-### 4. Semantic Analysis and Binding (`IrisSemanticAnalyzer`)
-Semantic analysis is performed in two distinct passes:
-1. **Pass 1 (Declaration Collection)**: Registers all top-level functions and variables. Global declarations are defined in `globalScope`, while file-local declarations are placed in their respective unit scopes. Duplicate declarations trigger `E2003` with a reference to the earlier span.
-2. **Pass 2 (Body and Expression Checking)**: Evaluates function bodies, statements, and expressions. Validates type compatibility, tracks loop nesting levels for `break`/`skip`, verifies reachability of return statements via `returnsOnEveryPath()`, and records resolutions in `SemanticModel`.
+The lexer consumes source characters and converts them into strongly typed Token objects. Each token retains its TokenType, lexeme, optional parsed literal value, and SourceSpan.
 
-### 5. Java Code Generation (`JavaCodeGenerator`)
-The code generator transpiles the verified ASTs into idiomatic Java source code:
-- **Identifier Mangling (`JavaNameMangler`)**: All IrisScript identifiers are prefixed with `iris$` and sanitized using unicode sequences (`_uXXXX`), preventing collisions with Java keywords (`class`, `public`, `goto`, etc.).
-- **Global Container (`IrisGlobals.java`)**: Holds static variables and functions declared with `global`.
-- **Module Classes (`<File>Module<ID>.java`)**: Holds unit-local functions, file-scoped fields, and static initializers.
-- **Launcher (`IrisLauncher.java`)**: Pre-loads module classes and dispatches execution to `main()` or top-level statements.
+### 3. Syntactic Analysis (IrisParser)
 
-### 6. Compilation and Runtime Launcher (`CompilerServices`)
-`CompilerServices` writes generated Java files to the output directory (defaults to `./out`), locates the host `javac` compiler using `java.home`, compiles the generated code with `-encoding UTF-8`, and launches the application with `java -cp <output> irisscript.generated.IrisLauncher`.
+The recursive-descent parser constructs an Abstract Syntax Tree (AST) rooted in CompilationUnit. It uses expression precedence rules and error recovery to report syntax errors.
+
+### 4. Semantic Analysis and Binding (IrisSemanticAnalyzer)
+
+Semantic analysis validates declarations, types, scopes, function calls, control flow, and return paths.
+
+The analyzer collects declarations and then checks function bodies and expressions. It records symbol resolutions in SemanticModel and reports semantic errors and warnings.
+
+### 5. Java Code Generation (JavaCodeGenerator)
+
+The code generator translates validated ASTs into Java source code.
+
+Generated code can include:
+
+- A global container for global declarations.
+- Module classes for file-local declarations.
+- A launcher class that dispatches execution to main() or top-level statements.
+
+Identifier mangling prevents IrisScript identifiers from colliding with Java keywords and generated names.
+
+### 6. Compilation and Runtime Launcher (CompilerServices)
+
+CompilerServices coordinates build and run operations.
+
+The build operation generates Java source files in the configured output directory.
+
+The run operation:
+
+1. Locates a valid JDK through JdkLocator.
+2. Uses the discovered javac executable to compile generated Java sources.
+3. Stops if compilation fails.
+4. Uses java from the same JDK to execute the generated launcher.
+5. Forwards program arguments and returns the program's exit code.
+
+Using a single toolchain avoids compiling with one JDK and running with another.
+
+### 7. JDK Discovery (JdkLocator)
+
+JdkLocator encapsulates the search for a complete Java Development Kit.
+
+It checks, in priority order:
+
+1. IRISSCRIPT_JDK_HOME.
+2. JAVA_HOME.
+3. The current JVM's java.home and its parent directory.
+4. Directories listed in PATH.
+
+It uses platform-aware Java path APIs, the platform's PATH separator, and platform-appropriate executable names. It does not hardcode common installation paths or scan the entire filesystem.
+
+A candidate is accepted only if java and javac are present in the same bin directory. If no valid candidate is found, JdkLocator throws an IOException explaining that a complete JDK could not be found.
 
 ---
 
@@ -484,42 +598,37 @@ The code generator transpiles the verified ASTs into idiomatic Java source code:
 
 ### CLI Syntax
 
-```bash
-iris <command> [options] <files...> [-- <program-args...>]
-```
+    iris <command> [options] <files...> [-- <program-args...>]
 
 ### Commands
 
 | Command | Description |
 |:---|:---|
-| `build` | Parses, analyzes, and transpiles IrisScript files into Java source code. |
-| `run` | Builds the project, compiles generated Java to bytecode, and executes the program. |
-| `help` | Displays compiler usage and available options. |
+| build | Parses, analyzes, and transpiles IrisScript files into Java source code. |
+| run | Builds the project, compiles generated Java to bytecode, and executes the program. |
+| help | Displays compiler usage and available options. |
 
 ### Options
 
-| Option | Flag Alias | Description |
+| Option | Alias | Description |
 |:---|:---|:---|
-| `--output <dir>` | `-o <dir>` | Specifies the output directory for generated Java code and class files. Default is `./out`. |
-| `--no-color` | `-nc` | Disables ANSI color escapes in error and warning diagnostic output. |
-| `--` | N/A | Separator indicating all subsequent parameters are forwarded to the executing IrisScript program. |
+| --output <dir> | -o <dir> | Specifies the output directory. |
+| --no-color | -nc | Disables ANSI color output. |
+| -- | N/A | Forwards subsequent arguments to the IrisScript program. |
 
 ### CLI Examples
 
-Compile multiple source files into a custom directory:
-```bash
-.\iris.bat build -o out/src math.iris main.iris
-```
+Build multiple source files:
 
-Run a program with ANSI color diagnostics disabled:
-```bash
-.\iris.bat run -nc main.iris
-```
+    iris build -o out math.iris main.iris
 
-Pass arguments to the IrisScript application:
-```bash
-.\iris.bat run server.iris -- 8080 127.0.0.1
-```
+Run with color disabled:
+
+    iris run -nc main.iris
+
+Pass arguments to the program:
+
+    iris run server.iris -- 8080 127.0.0.1
 
 ---
 
@@ -527,127 +636,109 @@ Pass arguments to the IrisScript application:
 
 ### 1. Factorial and Recursion
 
-```iris
-function factorial integer(variable n integer) {
-    if (n <= 1) {
-        return 1;
+    function factorial integer(variable n integer) {
+        if (n <= 1) {
+            return 1;
+        }
+        return n * factorial(n - 1);
     }
-    return n * factorial(n - 1);
-}
 
-function main void() {
-    variable num integer = 7;
-    terminal "Factorial of ";
-    terminal num;
-    terminal " is: ";
-    terminal factorial(num);
-    terminal "\n";
-}
-```
+    function main void() {
+        variable num integer = 7;
+        terminal "Factorial of ";
+        terminal num;
+        terminal " is: ";
+        terminal factorial(num);
+        terminal "\n";
+    }
 
 ### 2. Multi-File Global State and Functions
 
-**File: `config.iris`**
-```iris
-global constant APP_NAME text = "IrisEngine";
-global variable currentRuns integer = 0;
+File: config.iris
 
-global function logRun void(variable label text) {
-    currentRuns = currentRuns + 1;
-    terminal "[";
-    terminal APP_NAME;
-    terminal "] Run #";
-    terminal currentRuns;
-    terminal ": ";
-    terminal label;
-    terminal "\n";
-}
-```
+    global constant APP_NAME text = "IrisEngine";
+    global variable currentRuns integer = 0;
 
-**File: `main.iris`**
-```iris
-function main void() {
-    logRun("Initializing core services");
-    logRun("Executing primary workload");
-    logRun("Shutdown complete");
-}
-```
+    global function logRun void(variable label text) {
+        currentRuns = currentRuns + 1;
+        terminal "[";
+        terminal APP_NAME;
+        terminal "] Run #";
+        terminal currentRuns;
+        terminal ": ";
+        terminal label;
+        terminal "\n";
+    }
 
-Compile and run together:
-```bash
-.\iris.bat run config.iris main.iris
-```
+File: main.iris
+
+    function main void() {
+        logRun("Initializing core services");
+        logRun("Executing primary workload");
+        logRun("Shutdown complete");
+    }
+
+Run both files together:
+
+    iris run config.iris main.iris
 
 ### 3. Numeric Types and Precision Conversion
 
-```iris
-function main void() {
-    variable intVal integer = 42;
-    variable decVal decimal = 10.5;
+    function main void() {
+        variable intVal integer = 42;
+        variable decVal decimal = 10.5;
 
-    // Implicit widening: integer promotes to decimal
-    variable sum decimal = intVal + decVal;
-    terminal "Sum: ";
-    terminal sum; // 52.5
-    terminal "\n";
+        variable sum decimal = intVal + decVal;
+        terminal "Sum: ";
+        terminal sum;
+        terminal "\n";
 
-    // Narrowing assignment: triggers warning W2001
-    variable truncated integer = decVal;
-    terminal "Truncated: ";
-    terminal truncated; // 10
-    terminal "\n";
-}
-```
+        variable truncated integer = decVal;
+        terminal "Truncated: ";
+        terminal truncated;
+        terminal "\n";
+    }
 
 ### 4. While Loops with Skip and Break
 
-```iris
-function main void() {
-    variable count integer = 0;
-    terminal "Even numbers up to 10:\n";
+    function main void() {
+        variable count integer = 0;
+        terminal "Even numbers up to 10:\n";
 
-    while (count < 20) {
-        count = count + 1;
+        while (count < 20) {
+            count = count + 1;
 
-        if (count % 2 != 0) {
-            skip; // Skip odd numbers
+            if (count % 2 != 0) {
+                skip;
+            }
+
+            if (count > 10) {
+                break;
+            }
+
+            terminal "  -> ";
+            terminal count;
+            terminal "\n";
         }
-
-        if (count > 10) {
-            break; // Stop at 10
-        }
-
-        terminal "  -> ";
-        terminal count;
-        terminal "\n";
     }
-}
-```
 
 ---
 
 ## Tooling and VS Code Extension
 
-IrisScript includes an official VS Code extension located in [`vscode-extension/irisscript-language-support`](./vscode-extension/irisscript-language-support).
+IrisScript includes a VS Code extension located in the repository's VS Code extension directory.
 
 ### Features
 
-- **Syntax Highlighting**: Scopes all 19 keywords, 5 primitive types, operators, string escapes, numbers, and comments across all VS Code color themes.
-- **Run & Compile Buttons**: `▶` (Run) and `✔` (Compile) buttons appear in the editor title bar whenever a `.iris` file is open.
-- **Real-Time Error Highlighting**: Live diagnostics engine runs the compiler in the background as you type (debounced 350 ms), rendering squiggly underlines and populating the **Problems** tab.
-- **Bundled Standalone Compiler**: Ships with `bin/iris.jar` — the complete IrisScript compiler pre-packaged inside the extension. Only **Java 23+** is required by the user.
+- Syntax highlighting for IrisScript keywords, types, operators, strings, numbers, and comments.
+- Run and Compile buttons in the editor title bar for .iris files.
+- Real-time diagnostics displayed through editor squiggles and the Problems panel.
+- Compiler integration through the IrisScript CLI.
 
-### User Requirements (Marketplace Install)
+### JDK Requirements
 
-| Requirement | Details |
-|:---|:---|
-| Java 23+ JDK | Must be available in the system `PATH` (`java` and `javac`). |
-| VS Code 1.80+ | Minimum supported editor version. |
+The extension's Java-launch mechanism and the compiler's internal JDK discovery are separate responsibilities.
 
-No separate IrisScript CLI download, Maven, or PATH configuration is required.
+If the extension launches the compiler using java -jar, Java must be available to that initial launch command. JdkLocator operates only after the compiler JVM has started.
 
----
-
-## License
-
-This project is licensed under the MIT License.
+For compiling and executing IrisScript programs, a complete JDK containing both java and javac must be discoverable through the supported configuration paths.

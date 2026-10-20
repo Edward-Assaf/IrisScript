@@ -1,6 +1,6 @@
 # IrisScript Runner and Syntax Checker for VS Code
 
-Official Visual Studio Code extension for the **IrisScript** programming language (v1.0.1).
+Official Visual Studio Code extension for the **IrisScript** programming language (v1.0.2).
 
 ---
 
@@ -18,7 +18,7 @@ Official Visual Studio Code extension for the **IrisScript** programming languag
 
 To run and check `.iris` files with this extension, you only need:
 
-1. **Java Development Kit (JDK 23 or newer)** installed on your machine and available in your system `PATH` (`java` and `javac`).
+**Java Development Kit (JDK 23 or newer)** installed on your machine and available in your system `PATH` (`java` and `javac`). A JDK does not necessarily need to be discoverable exclusively through the system PATH. IrisScript's JDK discovery mechanism checks configured environment variables, the currently running JVM's installation, and executable locations in PATH.
 
 ---
 

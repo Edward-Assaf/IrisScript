@@ -7,7 +7,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 import java.util.stream.Stream;
 
 import irisscript.ast.CompilationUnit;
@@ -61,9 +60,6 @@ public final class CompilerServices {
         }
     }
 
-    /**
-     * Builds, compiles, and launches the program. Returns the program's exit code.
-     */
     public static int run(SourceManager sourceManager, CompilerOptions options,
             DiagnosticsCollector diagnosticsCollector) {
         build(sourceManager, options, diagnosticsCollector);
@@ -90,7 +86,9 @@ public final class CompilerServices {
             if (javaFiles.isEmpty()) {
                 throw new IOException("No generated Java source files were found");
             }
-            Path javac = javaExecutable("javac");
+            JdkLocator.Toolchain jdk = JdkLocator.locate();
+            Path javac = jdk.javac();
+            System.out.println(javac.toString());
             List<String> compileCommand = new ArrayList<>();
             compileCommand.add(javac.toString());
             compileCommand.add("-encoding");
@@ -103,7 +101,7 @@ public final class CompilerServices {
             if (compileExit != 0) {
                 return compileExit;
             }
-            Path java = javaExecutable("java");
+            Path java = jdk.java();
             List<String> runCommand = new ArrayList<>();
             runCommand.add(java.toString());
             runCommand.add("-cp");
@@ -126,7 +124,7 @@ public final class CompilerServices {
     }
 
     public static void help() {
-        System.out.println("IrisScript compiler v1.0.1");
+        System.out.println("IrisScript Compiler v1.0.2");
         System.out.println("Usage: irisscript <command> [options]");
         System.out.println("Commands:");
         System.out.println("  build  Build the project and compile source code to Java Source Code");
@@ -152,17 +150,6 @@ public final class CompilerServices {
         }
         SemanticModel semanticModel = analyzer.analyze(units);
         return new AnalysisResult(List.copyOf(units), semanticModel);
-    }
-
-    private static Path javaExecutable(String name) throws IOException {
-        String executable = System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win")
-                ? name + ".exe"
-                : name;
-        Path path = Path.of(System.getProperty("java.home"), "bin", executable);
-        if (!Files.isRegularFile(path)) {
-            throw new IOException("Java executable not found: " + path);
-        }
-        return path;
     }
 
     private static void deleteTree(Path root) throws IOException {
