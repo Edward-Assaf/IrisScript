@@ -3,7 +3,7 @@
   "publisher": "edward-assaf",
   "displayName": "IrisScript Runner and Syntax Checker",
   "description": "Language support, syntax highlighting, diagnostics, and runner for IrisScript",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "engines": {
     "vscode": "^1.80.0"
   },
