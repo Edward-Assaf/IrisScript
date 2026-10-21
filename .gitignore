@@ -5,23 +5,23 @@
 !*/
 
 # 3. Explicitly allow and track the .gitignore file itself
-!.gitignore
+!./.gitignore
 
 # 4. Explicitly allow and track core project configuration and documentation
-!pom.xml
-!README.md
+!./pom.xml
+!./README.md
 
 # 5. Explicitly allow the convenient iris runner scripts (for Windows/Linux/Mac)
-!iris
-!iris.bat
+!./iris
+!./iris.bat
 
 # 6. Explicitly allow the src directory and all of its contents (source files)
-!src/
-!src/**
+!./src/
+!./src/**
 
 # 7. Explicitly allow the vscode-extension
-!vscode-extension/irisscript-language-support/irisscript-language-support*.vsix
+!./vscode-extension/irisscript-language-support/irisscript-language-support*.vsix
 
 # 8. Explicitly allow .vscode settings directory
-!.vscode/
-!.vscode/**
+!./.vscode/
+!./.vscode/**
