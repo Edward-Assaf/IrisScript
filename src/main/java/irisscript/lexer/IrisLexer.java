@@ -79,16 +79,30 @@ public final class IrisLexer {
                 addToken(TokenType.DELIMITER_SEMICOLON);
                 break;
             case '+':
-                addToken(TokenType.OPERATOR_PLUS);
+                if (match('=')) {
+                    addToken(TokenType.OPERATOR_PLUS_EQ);
+                } else if (match('+')) {
+                    addToken(TokenType.OPERATOR_TWO_PLUS);
+                } else {
+                    addToken(TokenType.OPERATOR_PLUS);
+                }
                 break;
             case '-':
-                addToken(match('>') ? TokenType.DELIMITER_ARROW : TokenType.OPERATOR_MINUS);
+                if (match('=')) {
+                    addToken(TokenType.OPERATOR_MINUS_EQ);
+                } else if (match('-')) {
+                    addToken(TokenType.OPERATOR_TWO_MINUS);
+                } else if (match('>')) {
+                    addToken(TokenType.DELIMITER_ARROW);
+                } else {
+                    addToken(TokenType.OPERATOR_MINUS);
+                }
                 break;
             case '*':
-                addToken(TokenType.OPERATOR_STAR);
+                addToken((match('=') ? TokenType.OPERATOR_STAR_EQ : TokenType.OPERATOR_STAR));
                 break;
             case '%':
-                addToken(TokenType.OPERATOR_PERCENT);
+                addToken((match('=') ? TokenType.OPERATOR_PERCENT_EQ : TokenType.OPERATOR_PERCENT));
                 break;
             case '=':
                 addToken(match('=') ? TokenType.OPERATOR_TWO_EQ : TokenType.OPERATOR_ONE_EQ);
@@ -103,10 +117,22 @@ public final class IrisLexer {
                 addToken(match('=') ? TokenType.OPERATOR_GREATER_EQ : TokenType.OPERATOR_GREATER);
                 break;
             case '&':
-                addToken(match('&') ? TokenType.OPERATOR_TWO_AMPERSAND : TokenType.OPERATOR_AMPERSAND);
+                if (match('=')) {
+                    addToken(TokenType.OPERATOR_AMPERSAND_EQ);
+                } else if (match('&')) {
+                    addToken(TokenType.OPERATOR_TWO_AMPERSAND);
+                } else {
+                    addToken(TokenType.OPERATOR_AMPERSAND);
+                }
                 break;
             case '|':
-                addToken(match('|') ? TokenType.OPERATOR_TWO_PIPE : TokenType.OPERATOR_PIPE);
+                if (match('=')) {
+                    addToken(TokenType.OPERATOR_PIPE_EQ);
+                } else if (match('|')) {
+                    addToken(TokenType.OPERATOR_TWO_PIPE);
+                } else {
+                    addToken(TokenType.OPERATOR_PIPE);
+                }
                 break;
             case '/':
                 if (match('/')) {
@@ -115,6 +141,8 @@ public final class IrisLexer {
                     }
                 } else if (match('*')) {
                     scanBlockComment();
+                } else if (match('=')) {
+                    addToken(TokenType.OPERATOR_SLASH_EQ);
                 } else {
                     addToken(TokenType.OPERATOR_SLASH);
                 }

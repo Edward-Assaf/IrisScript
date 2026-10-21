@@ -19,9 +19,8 @@
 !src/
 !src/**
 
-# 7. Explicitly allow the vscode-extension directory and all of its contents
-!vscode-extension/
-!vscode-extension/**
+# 7. Explicitly allow the vscode-extension
+!vscode-extension/irisscript-language-support/irisscript-language-support*.vsix
 
 # 8. Explicitly allow .vscode settings directory
 !.vscode/

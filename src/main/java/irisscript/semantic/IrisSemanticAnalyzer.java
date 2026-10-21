@@ -113,8 +113,20 @@ public final class IrisSemanticAnalyzer {
         SemanticType previousReturnType = currentFunctionReturnType;
         try {
             currentFunctionReturnType = resolveType(functionDeclaration.returnType(), true);
+            if (functionDeclaration.returnType().isArray()) {
+                if (functionDeclaration.returnType().size() != null) {
+                    reportError("E2032", "Size-declaration for arrays is only permitted in declaration statements",
+                            functionDeclaration.returnType().span());
+                }
+            }
             for (ParameterDeclaration parameter : functionDeclaration.parameters()) {
                 SemanticType parameterType = resolveType(parameter.type(), false);
+                if (parameter.type().isArray()) {
+                    if (parameter.type().size() != null) {
+                        reportError("E2032", "Size-declaration for arrays is only permitted in declaration statements",
+                                parameter.type().span());
+                    }
+                }
                 Symbol parameterSymbol = new Symbol(parameter.name(), SymbolKind.PARAMETER, parameterType,
                         parameter.isConstant(), List.of(), parameter.span(), parameter, currentUnit);
                 semanticModel.bindOwner(parameter, currentUnit);
@@ -208,8 +220,14 @@ public final class IrisSemanticAnalyzer {
     private void analyzeVariableStatement(VariableDeclarationStatement variableStatement, Scope scope,
             Scope unitScope) {
         SemanticType declaredType = resolveType(variableStatement.type(), false);
+        validateArraySize(variableStatement.type(), scope);
         Expression initializer = variableStatement.initializer();
-        if (initializer != null) {
+        if (variableStatement.type().isArray() && variableStatement.type().size() != null) {
+            if (initializer != null) {
+                reportError("E2031", "Arrays with an explicit size cannot have an initializer",
+                        variableStatement.initializer().span());
+            }
+        } else if (initializer != null) {
             SemanticType initializerType = analyzeExpression(initializer, scope);
             validateType(declaredType, initializerType, initializer.span());
         }
@@ -272,6 +290,7 @@ public final class IrisSemanticAnalyzer {
             case IdentifierExpression identifierExpression -> analyzeIdentifierExpression(identifierExpression, scope);
             case LiteralExpression literalExpression -> analyzeLiteralExpression(literalExpression);
             case UnaryExpression unaryExpression -> analyzeUnaryExpression(unaryExpression, scope);
+            case ArrayLiteralExpression arrayExpression -> analyzeArrayExpression(arrayExpression, scope);
             case ErrorExpression errorExpression -> analyzeErrorExpression(errorExpression);
         };
         semanticModel.bindExpressionType(expression, result.name());
@@ -294,12 +313,49 @@ public final class IrisSemanticAnalyzer {
             reportError("E2012", "Cannot reassign a variable declared as 'constant'", assignmentExpression.span());
             return SemanticType.ERROR;
         }
-        SemanticType valueType = analyzeExpression(assignmentExpression.value(), scope);
-        if (valueType == SemanticType.ERROR) {
-            return valueType;
+        SemanticType variableType = symbol.get().type();
+        SemanticType rhsType = analyzeExpression(assignmentExpression.value(), scope);
+        if (rhsType == SemanticType.ERROR) {
+            return SemanticType.ERROR;
         }
-        validateType(symbol.get().type(), valueType, assignmentExpression.value().span());
-        return symbol.get().type();
+        SemanticType valueType = null;
+        switch (assignmentExpression.operator()) {
+            case ASSIGN:
+                valueType = rhsType;
+                break;
+            case ADD_ASSIGN:
+                valueType = getNumericType(variableType, rhsType, BinaryOperator.ADD,
+                        assignmentExpression.value().span());
+                break;
+            case SUBTRACT_ASSIGN:
+                valueType = getNumericType(variableType, rhsType, BinaryOperator.SUBTRACT,
+                        assignmentExpression.value().span());
+                break;
+            case MULTIPLY_ASSIGN:
+                valueType = getNumericType(variableType, rhsType, BinaryOperator.MULTIPLY,
+                        assignmentExpression.value().span());
+                break;
+            case DIVIDE_ASSIGN:
+                valueType = getNumericType(variableType, rhsType, BinaryOperator.DIVIDE,
+                        assignmentExpression.value().span());
+                break;
+            case MODULO_ASSIGN:
+                valueType = getModuloType(variableType, rhsType, assignmentExpression.value().span());
+                break;
+            case BITWISE_AND_ASSIGN:
+                valueType = getBitwiseType(variableType, rhsType, BinaryOperator.BITWISE_AND,
+                        assignmentExpression.value().span());
+                break;
+            case BITWISE_OR_ASSIGN:
+                valueType = getBitwiseType(variableType, rhsType, BinaryOperator.BITWISE_OR,
+                        assignmentExpression.value().span());
+                break;
+        }
+        if (valueType == SemanticType.ERROR) {
+            return SemanticType.ERROR;
+        }
+        validateType(variableType, valueType, assignmentExpression.value().span());
+        return variableType;
     }
 
     private SemanticType analyzeBinaryExpression(BinaryExpression binaryExpression, Scope scope) {
@@ -419,6 +475,60 @@ public final class IrisSemanticAnalyzer {
                 }
                 yield SemanticType.BOOLEAN;
             }
+            case PRE_INCREMENT, PRE_DECREMENT, POST_INCREMENT, POST_DECREMENT -> {
+                if (!(unaryExpression.operand() instanceof IdentifierExpression identifier)) {
+                    reportError("E2029", "Increment and decrement operators require an identifier operand",
+                            unaryExpression.span());
+                    yield SemanticType.ERROR;
+                }
+                Optional<Symbol> symbol = scope.resolve(identifier.name());
+                if (!symbol.isPresent()) {
+                    yield SemanticType.ERROR;
+                }
+                if (symbol.get().isConstant()) {
+                    reportError("E2012", "Cannot reassign a variable declared as 'constant'", unaryExpression.span());
+                    yield SemanticType.ERROR;
+                }
+                if (!isNumeric(operandType)) {
+                    reportError("E2030", "Increment and decrement operators require a numeric operand",
+                            unaryExpression.span());
+                    yield SemanticType.ERROR;
+                }
+                yield operandType;
+            }
+        };
+    }
+
+    private SemanticType analyzeArrayExpression(ArrayLiteralExpression arrayExpression, Scope scope) {
+        if (arrayExpression.elements().isEmpty()) {
+            reportError("E2026", "Cannot infer the type of an empty array literal", arrayExpression.span());
+            return SemanticType.ERROR;
+        }
+        SemanticType elementType = null;
+        for (Expression element : arrayExpression.elements()) {
+            SemanticType currentType = analyzeExpression(element, scope);
+            if (currentType == SemanticType.ERROR) {
+                return SemanticType.ERROR;
+            }
+            if (elementType == null) {
+                elementType = currentType;
+                continue;
+            }
+            if (elementType != currentType) {
+                if (isNumeric(elementType) && isNumeric(currentType)) {
+                    elementType = SemanticType.DECIMAL;
+                    continue;
+                }
+                reportError("E2027", "Array literal elements must have compatible types", element.span());
+                return SemanticType.ERROR;
+            }
+        }
+        return switch (elementType) {
+            case INTEGER -> SemanticType.ARRAY_INTEGER;
+            case DECIMAL -> SemanticType.ARRAY_DECIMAL;
+            case TEXT -> SemanticType.ARRAY_TEXT;
+            case BOOLEAN -> SemanticType.ARRAY_BOOLEAN;
+            default -> SemanticType.ERROR;
         };
     }
 
@@ -489,6 +599,36 @@ public final class IrisSemanticAnalyzer {
         return SemanticType.INTEGER;
     }
 
+    private SemanticType getNumericType(SemanticType leftType, SemanticType rightType, BinaryOperator operator,
+            SourceSpan span) {
+        if (rightType == SemanticType.TEXT && leftType == SemanticType.TEXT && operator == BinaryOperator.ADD) {
+            return SemanticType.TEXT;
+        }
+        if (!isNumeric(leftType) || !isNumeric(rightType)) {
+            reportError("E2013", "Operator " + operator + " requires numeric operands", span);
+            return SemanticType.ERROR;
+        }
+        return (leftType == SemanticType.DECIMAL || rightType == SemanticType.DECIMAL) ? SemanticType.DECIMAL
+                : SemanticType.INTEGER;
+    }
+
+    private SemanticType getModuloType(SemanticType leftType, SemanticType rightType, SourceSpan span) {
+        if (leftType != SemanticType.INTEGER || rightType != SemanticType.INTEGER) {
+            reportError("E2014", "Operator " + BinaryOperator.MODULO + " requires integer operands", span);
+            return SemanticType.ERROR;
+        }
+        return SemanticType.INTEGER;
+    }
+
+    private SemanticType getBitwiseType(SemanticType leftType, SemanticType rightType, BinaryOperator operator,
+            SourceSpan span) {
+        if (leftType != SemanticType.INTEGER || rightType != SemanticType.INTEGER) {
+            reportError("E2014", "Operator " + operator + " requires integer operands", span);
+            return SemanticType.ERROR;
+        }
+        return SemanticType.INTEGER;
+    }
+
     private boolean isNumeric(SemanticType type) {
         return type == SemanticType.INTEGER || type == SemanticType.DECIMAL;
     }
@@ -497,14 +637,25 @@ public final class IrisSemanticAnalyzer {
         if (type == null) {
             return SemanticType.ERROR;
         }
-        SemanticType semanticType = switch (type.name()) {
-            case "integer" -> SemanticType.INTEGER;
-            case "text" -> SemanticType.TEXT;
-            case "decimal" -> SemanticType.DECIMAL;
-            case "boolean" -> SemanticType.BOOLEAN;
-            case "void" -> SemanticType.VOID;
-            default -> SemanticType.ERROR;
-        };
+        SemanticType semanticType = null;
+        if (!type.isArray()) {
+            semanticType = switch (type.name()) {
+                case "integer" -> SemanticType.INTEGER;
+                case "text" -> SemanticType.TEXT;
+                case "decimal" -> SemanticType.DECIMAL;
+                case "boolean" -> SemanticType.BOOLEAN;
+                case "void" -> SemanticType.VOID;
+                default -> SemanticType.ERROR;
+            };
+        } else {
+            semanticType = switch (type.name()) {
+                case "integer" -> SemanticType.ARRAY_INTEGER;
+                case "text" -> SemanticType.ARRAY_TEXT;
+                case "decimal" -> SemanticType.ARRAY_DECIMAL;
+                case "boolean" -> SemanticType.ARRAY_BOOLEAN;
+                default -> SemanticType.ERROR;
+            };
+        }
         if (semanticType == SemanticType.ERROR) {
             reportError("E2001", "Unknown type name: " + type.name(), type.span());
             return SemanticType.ERROR;
@@ -514,6 +665,19 @@ public final class IrisSemanticAnalyzer {
             return SemanticType.ERROR;
         }
         return semanticType;
+    }
+
+    private void validateArraySize(TypeNode type, Scope scope) {
+        if (!type.isArray()) {
+            return;
+        }
+        if (type.size() == null) {
+            return;
+        }
+        SemanticType sizeType = analyzeExpression(type.size(), scope);
+        if (sizeType != SemanticType.INTEGER) {
+            reportError("E2028", "Array size must be an integer expression", type.size().span());
+        }
     }
 
     private void validateType(SemanticType required, SemanticType provided, SourceSpan span) {

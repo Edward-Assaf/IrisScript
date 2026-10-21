@@ -149,10 +149,7 @@ public final class IrisParser {
     private VariableDeclarationStatement parseVariableOrConstantDeclaration(Token keywordToken, boolean isConstant,
             boolean isGlobal, Token declarationStart) {
         Token nameToken = consume(TokenType.IDENTIFIER, "E1009", "Expected variable name");
-        TypeNode type = null;
-        if (isTypeStart(tokens.peek().type())) {
-            type = parseType();
-        }
+        TypeNode type = parseType();
         Expression initializer = null;
         if (tokens.match(TokenType.OPERATOR_ONE_EQ)) {
             initializer = parseExpression();
@@ -271,14 +268,32 @@ public final class IrisParser {
 
     private Expression parseAssignment() {
         Expression expr = parseLogicalOr();
+        AssignmentOperator operator = null;
         if (tokens.match(TokenType.OPERATOR_ONE_EQ)) {
-            Token equalsToken = tokens.previous();
+            operator = AssignmentOperator.ASSIGN;
+        } else if (tokens.match(TokenType.OPERATOR_PLUS_EQ)) {
+            operator = AssignmentOperator.ADD_ASSIGN;
+        } else if (tokens.match(TokenType.OPERATOR_MINUS_EQ)) {
+            operator = AssignmentOperator.SUBTRACT_ASSIGN;
+        } else if (tokens.match(TokenType.OPERATOR_STAR_EQ)) {
+            operator = AssignmentOperator.MULTIPLY_ASSIGN;
+        } else if (tokens.match(TokenType.OPERATOR_SLASH_EQ)) {
+            operator = AssignmentOperator.DIVIDE_ASSIGN;
+        } else if (tokens.match(TokenType.OPERATOR_PERCENT_EQ)) {
+            operator = AssignmentOperator.MODULO_ASSIGN;
+        } else if (tokens.match(TokenType.OPERATOR_AMPERSAND_EQ)) {
+            operator = AssignmentOperator.BITWISE_AND_ASSIGN;
+        } else if (tokens.match(TokenType.OPERATOR_PIPE_EQ)) {
+            operator = AssignmentOperator.BITWISE_OR_ASSIGN;
+        }
+        if (operator != null) {
+            Token assignToken = tokens.previous();
             Expression value = parseAssignment();
             if (expr instanceof IdentifierExpression id) {
                 SourceSpan span = SourceSpan.covering(id.span(), value.span());
-                return new AssignmentExpression(id.name(), value, span);
+                return new AssignmentExpression(id.name(), value, operator, span);
             }
-            reportError("E1004", "Invalid assignment target, must be an identifier", equalsToken.span());
+            reportError("E1004", "Invalid assignment target, must be an identifier", assignToken.span());
             return new ErrorExpression(SourceSpan.covering(expr.span(), value.span()));
         }
         return expr;
@@ -403,23 +418,22 @@ public final class IrisParser {
     }
 
     private Expression parseUnary() {
-        if (tokens.match(TokenType.OPERATOR_EXCLAMATION)) {
-            Token opToken = tokens.previous();
-            Expression operand = parseUnary();
-            return new UnaryExpression(UnaryOperator.NOT, operand,
-                    SourceSpan.covering(opToken.span(), operand.span()));
+        UnaryOperator operator = null;
+        if (tokens.match(TokenType.OPERATOR_TWO_PLUS)) {
+            operator = UnaryOperator.PRE_INCREMENT;
+        } else if (tokens.match(TokenType.OPERATOR_TWO_MINUS)) {
+            operator = UnaryOperator.PRE_DECREMENT;
+        } else if (tokens.match(TokenType.OPERATOR_EXCLAMATION)) {
+            operator = UnaryOperator.NOT;
+        } else if (tokens.match(TokenType.OPERATOR_MINUS)) {
+            operator = UnaryOperator.NEGATIVE;
+        } else if (tokens.match(TokenType.OPERATOR_PLUS)) {
+            operator = UnaryOperator.POSITIVE;
         }
-        if (tokens.match(TokenType.OPERATOR_MINUS)) {
+        if (operator != null) {
             Token opToken = tokens.previous();
             Expression operand = parseUnary();
-            return new UnaryExpression(UnaryOperator.NEGATIVE, operand,
-                    SourceSpan.covering(opToken.span(), operand.span()));
-        }
-        if (tokens.match(TokenType.OPERATOR_PLUS)) {
-            Token opToken = tokens.previous();
-            Expression operand = parseUnary();
-            return new UnaryExpression(UnaryOperator.POSITIVE, operand,
-                    SourceSpan.covering(opToken.span(), operand.span()));
+            return new UnaryExpression(operator, operand, SourceSpan.covering(opToken.span(), operand.span()));
         }
         return parseCall();
     }
@@ -436,6 +450,14 @@ public final class IrisParser {
                 }
                 Token rparen = consume(TokenType.DELIMITER_RPAREN, "E1003", "Expected ')' after arguments");
                 expr = new CallExpression(expr, arguments, SourceSpan.covering(expr.span(), rparen.span()));
+            } else if (tokens.match(TokenType.OPERATOR_TWO_PLUS)) {
+                Token opToken = tokens.previous();
+                expr = new UnaryExpression(UnaryOperator.POST_INCREMENT, expr,
+                        SourceSpan.covering(expr.span(), opToken.span()));
+            } else if (tokens.match(TokenType.OPERATOR_TWO_MINUS)) {
+                Token opToken = tokens.previous();
+                expr = new UnaryExpression(UnaryOperator.POST_DECREMENT, expr,
+                        SourceSpan.covering(expr.span(), opToken.span()));
             } else {
                 break;
             }
@@ -464,6 +486,17 @@ public final class IrisParser {
             Token rparen = consume(TokenType.DELIMITER_RPAREN, "E1003", "Expected ')' after expression");
             return new GroupingExpression(inner, spanFrom(lparen, rparen));
         }
+        if (tokens.match(TokenType.DELIMITER_LBRACE)) {
+            List<Expression> elements = new ArrayList<>();
+            Token lbrace = tokens.previous();
+            if (!tokens.check(TokenType.DELIMITER_RBRACE)) {
+                do {
+                    elements.add(parseExpression());
+                } while (tokens.match(TokenType.DELIMITER_COMMA));
+            }
+            Token rbrace = consume(TokenType.DELIMITER_RBRACE, "E1015", "Expected '}' after array literal");
+            return new ArrayLiteralExpression(elements, spanFrom(lbrace, rbrace));
+        }
         Token current = tokens.peek();
         reportError("E1002", "Expected an expression, found '" + current.lexeme() + "'", current.span());
         if (!isExpressionBoundary(current.type()) && !tokens.isAtEnd()) {
@@ -479,8 +512,19 @@ public final class IrisParser {
     private TypeNode parseType() {
         Token token = tokens.peek();
         if (isTypeStart(token.type())) {
+            SourceSpan span = token.span();
             tokens.consume();
-            return new TypeNode(token.lexeme(), token.span());
+            boolean isArray = false;
+            Expression size = null;
+            if (tokens.match(TokenType.DELIMITER_LBRACKET)) {
+                isArray = true;
+                if (!tokens.check(TokenType.DELIMITER_RBRACKET)) {
+                    size = parseExpression();
+                }
+                Token rbracket = consume(TokenType.DELIMITER_RBRACKET, "E1014", "Expected ']' for array declaration");
+                span = spanFrom(token, rbracket);
+            }
+            return new TypeNode(token.lexeme(), isArray, size, span);
         }
         reportError("E1001", "Expected type name, found '" + token.lexeme() + "'", token.span());
         throw new ParseException();

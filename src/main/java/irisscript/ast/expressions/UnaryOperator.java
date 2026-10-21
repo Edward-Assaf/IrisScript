@@ -4,6 +4,10 @@ public enum UnaryOperator {
 
     POSITIVE,
     NEGATIVE,
-    NOT
+    NOT,
+    POST_INCREMENT,
+    POST_DECREMENT,
+    PRE_INCREMENT,
+    PRE_DECREMENT
 
 }

@@ -1,4 +1,4 @@
-# IrisScript Language (v1.0.2)
+# IrisScript Language (v1.1)
 
 IrisScript is a statically typed, structured programming language designed for clarity, safety, and seamless execution on the Java Virtual Machine. IrisScript compiles into Java source code, which is then compiled and executed using an installed Java Development Kit (JDK).
 
@@ -21,6 +21,8 @@ This repository contains the language specification, compiler pipeline, diagnost
   - [Variables and Constants](#variables-and-constants)
   - [Operators and Expression Precedence](#operators-and-expression-precedence)
   - [Control Flow Statements](#control-flow-statements)
+  - [Loops (while)](#loops-while)
+  - [Arrays (1D)](#arrays-1d-for-now)
   - [Console Output: The Terminal Statement](#console-output-the-terminal-statement)
   - [Functions and Signatures](#functions-and-signatures)
   - [Scope Rules: Unit-Local vs Global](#scope-rules-unit-local-vs-global)
@@ -289,7 +291,7 @@ Expressions are evaluated according to the following precedence hierarchy, from 
 
 | Precedence | Category | Operators | Associativity | Supported Types |
 |:---|:---|:---|:---|:---|
-| 1 (Lowest) | Assignment | = | Right | Variable name = Compatible Expression |
+| 1 (Lowest) | Assignment | =, +=, -=, *=, /=, %=, &=, \|= | Right | Variable name = Compatible Expression |
 | 2 | Logical OR | || | Left | boolean |
 | 3 | Logical AND | && | Left | boolean |
 | 4 | Bitwise OR | | | Left | integer |
@@ -298,7 +300,7 @@ Expressions are evaluated according to the following precedence hierarchy, from 
 | 7 | Relational | <, <=, >, >= | Left | integer, decimal |
 | 8 | Additive | +, - | Left | integer, decimal; + also concatenates text |
 | 9 | Multiplicative | *, /, % | Left | * and / on numbers; % strictly on integer |
-| 10 | Unary | !, +, - | Right | ! on boolean; + and - on numbers |
+| 10 | Unary | !, +, -, ++, -- | Right | ! on boolean; +, -, ++, -- on numbers |
 | 11 (Highest) | Primary and Call | (), literals, identifiers, calls | N/A | Function calls and grouped expressions |
 
 ---
@@ -343,6 +345,36 @@ The while loop continues executing as long as its condition remains true:
 - break: Immediately terminates the innermost loop.
 - skip: Bypasses the rest of the loop body and advances to the next iteration.
 - Using break or skip outside a loop produces a semantic error.
+
+---
+
+### Arrays (1D for now)
+
+IrisScript currently supports fixed-size array declarations and array literal initialization. This is still an early version, so their use is still impractical and limited. Array declaration is similar to variable declaration. Example:
+
+    variable numbers integer[10];
+    variable names text[5];
+    variable values decimal[100];
+    variable flags boolean[3];
+
+An array can be initialized using array literal initialization:
+
+    variable numbers integer[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+    constant names text[] = {"Alice", "Bob", "Charlie", "David", "Eve"};
+    constant values decimal[] = {0.0, 1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9};
+    variable flags boolean[] = {true, false, true, false, true, false, true, false, true, false};
+
+A constant array has to be initialized with an array literal initialization:
+
+    constant names text[] = {"Alice", "Bob", "Charlie", "David", "Eve"};
+    constant numbers integer[]; // error
+
+An initialized array cannot specify a fixed-size:
+
+    variable test integer[] = {1, 2, 3};
+    variable test2 integer[3] = {1, 2, 3}; // error
+
+For now, this is the extent of array support in IrisScript. Further improvements are planned soon.
 
 ---
 
@@ -458,6 +490,8 @@ The compiler features categorized error reporting.
 | E1011 | Error | Expected variable or constant keyword in parameter declaration. |
 | E1012 | Error | Expected function or variable declaration after global. |
 | E1013 | Error | Global declaration attempted inside a local block. |
+| E1014 | Error | Expected closing brackets for array declaration. |
+| E1015 | Error | Expected closing brace after array literal. |
 
 ### Semantic Diagnostics (E2xxx, W2xxx)
 
@@ -488,6 +522,13 @@ The compiler features categorized error reporting.
 | E2023 | Error | Unary logical NOT requires a boolean operand. |
 | E2024 | Error | Not all execution paths return a value in a non-void function. |
 | E2025 | Error | Terminal statement requires a non-void expression. |
+| E2026 | Error | Cannot infer the type of an empty array literal. |
+| E2027 | Error | Array literal elements must have compatible types. |
+| E2028 | Error | Array size must be an integer expression. |
+| E2029 | Error | Increment and decrement operators require an identifier operand. |
+| E2030 | Error | Increment and decrement operators require a numeric operand. |
+| E2031 | Error | Arrays with an explicit size cannot have an initializer. |
+| E2032 | Error | Size-declaration for arrays is only permitted in declaration statements. |
 | W2001 | Warning | Potential loss of precision converting decimal to integer. |
 
 ### Build and Execution Diagnostics (E3xxx)

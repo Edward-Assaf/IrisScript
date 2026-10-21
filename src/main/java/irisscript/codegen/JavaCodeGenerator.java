@@ -14,6 +14,7 @@ import irisscript.ast.declarations.FunctionDeclaration;
 import irisscript.ast.declarations.ParameterDeclaration;
 import irisscript.ast.expressions.*;
 import irisscript.ast.statements.*;
+import irisscript.ast.types.TypeNode;
 import irisscript.semantic.SemanticModel;
 import irisscript.source.SourceFile;
 import irisscript.source.SourceManager;
@@ -201,18 +202,23 @@ public final class JavaCodeGenerator {
         }
         boolean hasGlobalInitializers = units.stream().flatMap(unit -> unit.statements().stream())
                 .anyMatch(statement -> statement instanceof VariableDeclarationStatement variable
-                        && variable.isGlobal() && variable.initializer() != null);
+                        && variable.isGlobal() && (variable.initializer() != null || isSizedArray(variable.type())));
         if (hasGlobalInitializers) {
             emitLine("");
             emitLine("static {");
             indent++;
             for (CompilationUnit unit : units) {
                 for (Statement statement : unit.statements()) {
-                    if (statement instanceof VariableDeclarationStatement variable
-                            && variable.isGlobal() && variable.initializer() != null) {
+                    if (statement instanceof VariableDeclarationStatement variable && variable.isGlobal()) {
                         emitIndent();
                         out.append(nameMangler.mangle(variable.name())).append(" = ");
-                        emitExpression(variable.initializer());
+                        if (variable.initializer() != null) {
+                            emitExpressionAs(variable.type().name().toUpperCase(), variable.initializer());
+                        } else if (isSizedArray(variable.type())) {
+                            emitSizedArrayCreation(variable.type());
+                        } else {
+                            continue;
+                        }
                         out.append(";\n");
                     }
                 }
@@ -244,7 +250,7 @@ public final class JavaCodeGenerator {
     private void emitTopLevelInitializer(CompilationUnit unit, boolean deferExecutableStatements) {
         boolean hasInitializer = unit.statements().stream().anyMatch(statement -> {
             if (statement instanceof VariableDeclarationStatement variable) {
-                return !variable.isGlobal() && variable.initializer() != null;
+                return !variable.isGlobal() && (variable.initializer() != null || isSizedArray(variable.type()));
             }
             return !deferExecutableStatements;
         });
@@ -256,10 +262,16 @@ public final class JavaCodeGenerator {
         indent++;
         for (Statement statement : unit.statements()) {
             if (statement instanceof VariableDeclarationStatement variable) {
-                if (!variable.isGlobal() && variable.initializer() != null) {
+                if (!variable.isGlobal()) {
                     emitIndent();
                     out.append(nameMangler.mangle(variable.name())).append(" = ");
-                    emitExpressionAs(variable.type().name().toUpperCase(), variable.initializer());
+                    if (variable.initializer() != null) {
+                        emitExpressionAs(variable.type().name().toUpperCase(), variable.initializer());
+                    } else if (isSizedArray(variable.type())) {
+                        emitSizedArrayCreation(variable.type());
+                    } else {
+                        continue;
+                    }
                     out.append(";\n");
                 }
             } else if (!deferExecutableStatements) {
@@ -320,6 +332,9 @@ public final class JavaCodeGenerator {
                 if (variable.initializer() != null) {
                     out.append(" = ");
                     emitExpressionAs(variable.type().name().toUpperCase(), variable.initializer());
+                } else if (isSizedArray(variable.type())) {
+                    out.append(" = ");
+                    emitSizedArrayCreation(variable.type());
                 }
                 out.append(";\n");
             }
@@ -414,12 +429,37 @@ public final class JavaCodeGenerator {
                 out.append(')');
             }
             case UnaryExpression unary -> {
-                out.append(switch (unary.operator()) {
-                    case POSITIVE -> "+";
-                    case NEGATIVE -> "-";
-                    case NOT -> "!";
-                });
-                emitExpression(unary.operand());
+                switch (unary.operator()) {
+                    case POSITIVE -> {
+                        out.append('+');
+                        emitExpression(unary.operand());
+                    }
+                    case NEGATIVE -> {
+                        out.append('-');
+                        emitExpression(unary.operand());
+                    }
+                    case NOT -> {
+                        out.append('!');
+                        emitExpression(unary.operand());
+                    }
+                    case PRE_DECREMENT -> {
+                        out.append("--");
+                        emitExpression(unary.operand());
+                    }
+                    case PRE_INCREMENT -> {
+                        out.append("++");
+                        emitExpression(unary.operand());
+                    }
+                    case POST_DECREMENT -> {
+                        emitExpression(unary.operand());
+                        out.append("--");
+                    }
+                    case POST_INCREMENT -> {
+                        emitExpression(unary.operand());
+                        out.append("++");
+                    }
+                    default -> throw new IllegalStateException("Unsupported unary operator: " + unary.operator());
+                }
             }
             case BinaryExpression binary -> {
                 String type = semanticModel.expressionTypeName(binary.left()).orElse("");
@@ -443,7 +483,16 @@ public final class JavaCodeGenerator {
             }
             case AssignmentExpression assignment -> {
                 emitResolvedReference(assignment, assignment.name());
-                out.append(" = ");
+                out.append(switch (assignment.operator()) {
+                    case ASSIGN -> " = ";
+                    case ADD_ASSIGN -> " += ";
+                    case SUBTRACT_ASSIGN -> " -= ";
+                    case MULTIPLY_ASSIGN -> " *= ";
+                    case DIVIDE_ASSIGN -> " /= ";
+                    case MODULO_ASSIGN -> " %= ";
+                    case BITWISE_AND_ASSIGN -> " &= ";
+                    case BITWISE_OR_ASSIGN -> " |= ";
+                });
                 AstNode declaration = semanticModel.resolvedDeclaration(assignment).orElse(null);
                 if (declaration instanceof VariableDeclarationStatement variable) {
                     emitExpressionAs(variable.type().name().toUpperCase(), assignment.value());
@@ -479,6 +528,26 @@ public final class JavaCodeGenerator {
                 }
                 out.append(')');
             }
+            case ArrayLiteralExpression array -> {
+                String expressionType = semanticModel.expressionTypeName(array).orElse("");
+                String javaElementType = switch (expressionType) {
+                    case "ARRAY_INTEGER" -> "long";
+                    case "ARRAY_DECIMAL" -> "double";
+                    case "ARRAY_TEXT" -> "String";
+                    case "ARRAY_BOOLEAN" -> "boolean";
+                    default -> "Object";
+                };
+                out.append("new ");
+                out.append(javaElementType);
+                out.append("[] {");
+                for (int i = 0; i < array.elements().size(); i++) {
+                    if (i > 0) {
+                        out.append(", ");
+                    }
+                    emitExpression(array.elements().get(i));
+                }
+                out.append("}");
+            }
             case ErrorExpression ignored ->
                 throw new IllegalStateException("Cannot generate Java from ErrorExpression");
         }
@@ -487,7 +556,7 @@ public final class JavaCodeGenerator {
     private void emitExpressionAs(String targetType, Expression expression) {
         String sourceType = semanticModel.expressionTypeName(expression).orElse("");
         if ("INTEGER".equals(targetType) && "DECIMAL".equals(sourceType)) {
-            out.append("((int) (");
+            out.append("((long) (");
             emitExpression(expression);
             out.append("))");
         } else {
@@ -536,6 +605,21 @@ public final class JavaCodeGenerator {
             return;
         }
         out.append(value);
+    }
+
+    private void emitSizedArrayCreation(TypeNode type) {
+        String javaElementType = switch (type.name()) {
+            case "integer" -> "long";
+            case "decimal" -> "double";
+            case "text" -> "String";
+            case "boolean" -> "boolean";
+            default -> "Object";
+        };
+        out.append("new ");
+        out.append(javaElementType);
+        out.append("[");
+        emitExpression(type.size());
+        out.append("]");
     }
 
     private String escape(String value, boolean character) {
@@ -589,6 +673,10 @@ public final class JavaCodeGenerator {
 
     private void emitIndent() {
         out.append("    ".repeat(Math.max(0, indent)));
+    }
+
+    private boolean isSizedArray(TypeNode type) {
+        return type != null && type.isArray() && type.size() != null;
     }
 
     private String toClassName(String stem) {

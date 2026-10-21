@@ -88,7 +88,6 @@ public final class CompilerServices {
             }
             JdkLocator.Toolchain jdk = JdkLocator.locate();
             Path javac = jdk.javac();
-            System.out.println(javac.toString());
             List<String> compileCommand = new ArrayList<>();
             compileCommand.add(javac.toString());
             compileCommand.add("-encoding");
@@ -124,7 +123,7 @@ public final class CompilerServices {
     }
 
     public static void help() {
-        System.out.println("IrisScript Compiler v1.0.2");
+        System.out.println("IrisScript Compiler v1.1");
         System.out.println("Usage: irisscript <command> [options]");
         System.out.println("Commands:");
         System.out.println("  build  Build the project and compile source code to Java Source Code");
