@@ -1,4 +1,4 @@
-# IrisScript Language (v1.1)
+# IrisScript Language (v1.1.1)
 
 IrisScript is a statically typed, structured programming language designed for clarity, safety, and seamless execution on the Java Virtual Machine. IrisScript compiles into Java source code, which is then compiled and executed using an installed Java Development Kit (JDK).
 
@@ -529,6 +529,7 @@ The compiler features categorized error reporting.
 | E2030 | Error | Increment and decrement operators require a numeric operand. |
 | E2031 | Error | Arrays with an explicit size cannot have an initializer. |
 | E2032 | Error | Size-declaration for arrays is only permitted in declaration statements. |
+| E2033 | Error | Array size must be non-negative. |
 | W2001 | Warning | Potential loss of precision converting decimal to integer. |
 
 ### Build and Execution Diagnostics (E3xxx)

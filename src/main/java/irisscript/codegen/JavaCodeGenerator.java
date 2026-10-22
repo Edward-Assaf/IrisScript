@@ -617,9 +617,11 @@ public final class JavaCodeGenerator {
         };
         out.append("new ");
         out.append(javaElementType);
-        out.append("[");
+        out.append('[');
+        out.append("(int) (");
         emitExpression(type.size());
-        out.append("]");
+        out.append(')');
+        out.append(']');
     }
 
     private String escape(String value, boolean character) {

@@ -123,7 +123,7 @@ public final class CompilerServices {
     }
 
     public static void help() {
-        System.out.println("IrisScript Compiler v1.1");
+        System.out.println("IrisScript Compiler v1.1.1");
         System.out.println("Usage: irisscript <command> [options]");
         System.out.println("Commands:");
         System.out.println("  build  Build the project and compile source code to Java Source Code");

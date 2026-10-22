@@ -678,6 +678,10 @@ public final class IrisSemanticAnalyzer {
         if (sizeType != SemanticType.INTEGER) {
             reportError("E2028", "Array size must be an integer expression", type.size().span());
         }
+        if (type.size() instanceof UnaryExpression unary && unary.operator() == UnaryOperator.NEGATIVE
+                && unary.operand() instanceof LiteralExpression literal && literal.value() instanceof Long) {
+            reportError("E2033", "Array size must be non-negative", type.size().span());
+        }
     }
 
     private void validateType(SemanticType required, SemanticType provided, SourceSpan span) {
