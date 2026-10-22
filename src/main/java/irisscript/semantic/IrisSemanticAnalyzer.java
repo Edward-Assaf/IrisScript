@@ -709,10 +709,12 @@ public final class IrisSemanticAnalyzer {
             return;
         }
         int sizesFound = 0;
+        boolean atLeastOneNonNull = false;
         for (Expression size : type.dimensions()) {
             if (size == null) {
                 continue;
             }
+            atLeastOneNonNull = true;
             sizesFound++;
             TypeInfo sizeType = analyzeExpression(size, scope);
             if (!sizeType.equals(INTEGER_TYPE)) {
@@ -724,7 +726,7 @@ public final class IrisSemanticAnalyzer {
                 reportError("E2033", "Array size must be non-negative", size.span());
             }
         }
-        if (sizesFound != type.dimensions().size()) {
+        if (sizesFound != type.dimensions().size() && atLeastOneNonNull) {
             reportError("E2036", "Size-declarations for multidimensional arrays cannot be partial", type.span());
         }
     }
