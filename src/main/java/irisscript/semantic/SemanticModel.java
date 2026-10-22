@@ -18,7 +18,7 @@ public final class SemanticModel {
 
     private final java.util.Set<AstNode> topLevelDeclarations = Collections.newSetFromMap(new IdentityHashMap<>());
 
-    private final Map<Expression, String> expressionTypes = new IdentityHashMap<>();
+    private final Map<Expression, TypeInfo> expressionTypes = new IdentityHashMap<>();
 
     void bindResolution(AstNode use, AstNode declaration) {
         resolvedDeclarations.put(Objects.requireNonNull(use), Objects.requireNonNull(declaration));
@@ -37,11 +37,11 @@ public final class SemanticModel {
         return topLevelDeclarations.contains(Objects.requireNonNull(declaration));
     }
 
-    void bindExpressionType(Expression expression, String typeName) {
-        expressionTypes.put(Objects.requireNonNull(expression), Objects.requireNonNull(typeName));
+    void bindExpressionType(Expression expression, TypeInfo type) {
+        expressionTypes.put(Objects.requireNonNull(expression), Objects.requireNonNull(type));
     }
 
-    public Optional<String> expressionTypeName(Expression expression) {
+    public Optional<TypeInfo> expressionType(Expression expression) {
         return Optional.ofNullable(expressionTypes.get(Objects.requireNonNull(expression)));
     }
 

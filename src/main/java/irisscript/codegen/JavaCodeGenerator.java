@@ -15,7 +15,10 @@ import irisscript.ast.declarations.ParameterDeclaration;
 import irisscript.ast.expressions.*;
 import irisscript.ast.statements.*;
 import irisscript.ast.types.TypeNode;
+import irisscript.semantic.IrisSemanticAnalyzer;
 import irisscript.semantic.SemanticModel;
+import irisscript.semantic.SemanticType;
+import irisscript.semantic.TypeInfo;
 import irisscript.source.SourceFile;
 import irisscript.source.SourceManager;
 
@@ -213,7 +216,7 @@ public final class JavaCodeGenerator {
                         emitIndent();
                         out.append(nameMangler.mangle(variable.name())).append(" = ");
                         if (variable.initializer() != null) {
-                            emitExpressionAs(variable.type().name().toUpperCase(), variable.initializer());
+                            emitExpressionAs(toTypeInfo(variable.type()), variable.initializer());
                         } else if (isSizedArray(variable.type())) {
                             emitSizedArrayCreation(variable.type());
                         } else {
@@ -266,7 +269,7 @@ public final class JavaCodeGenerator {
                     emitIndent();
                     out.append(nameMangler.mangle(variable.name())).append(" = ");
                     if (variable.initializer() != null) {
-                        emitExpressionAs(variable.type().name().toUpperCase(), variable.initializer());
+                        emitExpressionAs(toTypeInfo(variable.type()), variable.initializer());
                     } else if (isSizedArray(variable.type())) {
                         emitSizedArrayCreation(variable.type());
                     } else {
@@ -331,7 +334,7 @@ public final class JavaCodeGenerator {
                 out.append(typeMapper.map(variable.type())).append(' ').append(nameMangler.mangle(variable.name()));
                 if (variable.initializer() != null) {
                     out.append(" = ");
-                    emitExpressionAs(variable.type().name().toUpperCase(), variable.initializer());
+                    emitExpressionAs(toTypeInfo(variable.type()), variable.initializer());
                 } else if (isSizedArray(variable.type())) {
                     out.append(" = ");
                     emitSizedArrayCreation(variable.type());
@@ -349,7 +352,7 @@ public final class JavaCodeGenerator {
                 if (ret.value() != null) {
                     out.append(' ');
                     if (currentFunction != null) {
-                        emitExpressionAs(currentFunction.returnType().name().toUpperCase(), ret.value());
+                        emitExpressionAs(toTypeInfo(currentFunction.returnType()), ret.value());
                     } else {
                         emitExpression(ret.value());
                     }
@@ -462,9 +465,10 @@ public final class JavaCodeGenerator {
                 }
             }
             case BinaryExpression binary -> {
-                String type = semanticModel.expressionTypeName(binary.left()).orElse("");
+                TypeInfo type = semanticModel.expressionType(binary.left()).orElse(null);
+                boolean text = type != null && type.dimensions() == 0 && type.type() == SemanticType.TEXT;
                 if ((binary.operator() == BinaryOperator.EQUAL || binary.operator() == BinaryOperator.NOT_EQUAL)
-                        && type.equals("TEXT")) {
+                        && text) {
                     if (binary.operator() == BinaryOperator.NOT_EQUAL) {
                         out.append('!');
                     }
@@ -482,7 +486,7 @@ public final class JavaCodeGenerator {
                 }
             }
             case AssignmentExpression assignment -> {
-                emitResolvedReference(assignment, assignment.name());
+                emitExpression(assignment.target());
                 out.append(switch (assignment.operator()) {
                     case ASSIGN -> " = ";
                     case ADD_ASSIGN -> " += ";
@@ -493,11 +497,9 @@ public final class JavaCodeGenerator {
                     case BITWISE_AND_ASSIGN -> " &= ";
                     case BITWISE_OR_ASSIGN -> " |= ";
                 });
-                AstNode declaration = semanticModel.resolvedDeclaration(assignment).orElse(null);
-                if (declaration instanceof VariableDeclarationStatement variable) {
-                    emitExpressionAs(variable.type().name().toUpperCase(), assignment.value());
-                } else if (declaration instanceof ParameterDeclaration parameter) {
-                    emitExpressionAs(parameter.type().name().toUpperCase(), assignment.value());
+                TypeInfo targetType = semanticModel.expressionType(assignment.target()).orElse(null);
+                if (targetType != null) {
+                    emitExpressionAs(targetType, assignment.value());
                 } else {
                     emitExpression(assignment.value());
                 }
@@ -521,7 +523,7 @@ public final class JavaCodeGenerator {
                     Expression argument = call.arguments().get(i);
                     AstNode declaration = semanticModel.resolvedDeclaration(call).orElse(null);
                     if (declaration instanceof FunctionDeclaration function && i < function.parameters().size()) {
-                        emitExpressionAs(function.parameters().get(i).type().name().toUpperCase(), argument);
+                        emitExpressionAs(toTypeInfo(function.parameters().get(i).type()), argument);
                     } else {
                         emitExpression(argument);
                     }
@@ -529,39 +531,102 @@ public final class JavaCodeGenerator {
                 out.append(')');
             }
             case ArrayLiteralExpression array -> {
-                String expressionType = semanticModel.expressionTypeName(array).orElse("");
-                String javaElementType = switch (expressionType) {
-                    case "ARRAY_INTEGER" -> "long";
-                    case "ARRAY_DECIMAL" -> "double";
-                    case "ARRAY_TEXT" -> "String";
-                    case "ARRAY_BOOLEAN" -> "boolean";
-                    default -> "Object";
-                };
+                TypeInfo type = semanticModel.expressionType(array).orElse(null);
+                if (type == null) {
+                    throw new IllegalStateException("Array literal missing semantic type");
+                }
+                String javaElementType = javaElementType(type.type());
                 out.append("new ");
                 out.append(javaElementType);
-                out.append("[] {");
+                for (int i = 0; i < type.dimensions(); i++) {
+                    out.append("[]");
+                }
+                out.append('{');
                 for (int i = 0; i < array.elements().size(); i++) {
                     if (i > 0) {
                         out.append(", ");
                     }
-                    emitExpression(array.elements().get(i));
+                    emitArrayElementAs(type.elementType(), array.elements().get(i));
                 }
-                out.append("}");
+                out.append('}');
+            }
+            case IndexExpression index -> {
+                TypeInfo targetType = semanticModel.expressionType(index.target()).orElse(null);
+                if (targetType != null && targetType.type() == SemanticType.TEXT && targetType.dimensions() == 0) {
+                    out.append("String.valueOf(");
+                    emitExpression(index.target());
+                    out.append(".charAt((int)(");
+                    emitExpression(index.index());
+                    out.append(")))");
+                } else {
+                    emitExpression(index.target());
+                    out.append("[((int) (");
+                    emitExpression(index.index());
+                    out.append("))]");
+                }
             }
             case ErrorExpression ignored ->
                 throw new IllegalStateException("Cannot generate Java from ErrorExpression");
         }
     }
 
-    private void emitExpressionAs(String targetType, Expression expression) {
-        String sourceType = semanticModel.expressionTypeName(expression).orElse("");
-        if ("INTEGER".equals(targetType) && "DECIMAL".equals(sourceType)) {
+    private void emitExpressionAs(TypeInfo targetType, Expression expression) {
+        TypeInfo sourceType = semanticModel.expressionType(expression).orElse(null);
+        if (sourceType == null) {
+            emitExpression(expression);
+            return;
+        }
+        if (targetType.equals(IrisSemanticAnalyzer.INTEGER_TYPE)
+                && sourceType.equals(IrisSemanticAnalyzer.DECIMAL_TYPE)) {
             out.append("((long) (");
             emitExpression(expression);
             out.append("))");
         } else {
             emitExpression(expression);
         }
+    }
+
+    private void emitArrayElementAs(TypeInfo targetType, Expression expression) {
+        TypeInfo sourceType = semanticModel.expressionType(expression).orElse(null);
+        if (sourceType == null || targetType.equals(sourceType)
+                || targetType.type() != IrisSemanticAnalyzer.DECIMAL_TYPE.type()
+                || sourceType.type() != IrisSemanticAnalyzer.INTEGER_TYPE.type()
+                || targetType.dimensions() != sourceType.dimensions() || sourceType.dimensions() == 0) {
+            emitExpression(expression);
+            return;
+        }
+        int dimensions = sourceType.dimensions();
+        // Capture the source expression as Java code.
+        String sourceExpression;
+        StringBuilder previousOut = out;
+        try {
+            out = new StringBuilder();
+            emitExpression(expression);
+            sourceExpression = out.toString();
+        } finally {
+            out = previousOut;
+        }
+        if (dimensions == 1) {
+            out.append("java.util.Arrays.stream(")
+                    .append(sourceExpression)
+                    .append(").asDoubleStream().toArray()");
+            return;
+        }
+        // Build the conversion from the innermost array outward.
+        String convertedExpression = "java.util.Arrays.stream(__irisRow1)" + ".asDoubleStream().toArray()";
+        for (int level = 2; level < dimensions; level++) {
+            convertedExpression = "java.util.Arrays.stream(__irisRow" + level + ")" + ".map(__irisRow" + (level - 1)
+                    + " -> " + convertedExpression + ")" + ".toArray(double" + "[]".repeat(level) + "::new)";
+        }
+        out.append("java.util.Arrays.stream(")
+                .append(sourceExpression)
+                .append(").map(__irisRow")
+                .append(dimensions - 1)
+                .append(" -> ")
+                .append(convertedExpression)
+                .append(").toArray(double")
+                .append("[]".repeat(dimensions))
+                .append("::new)");
     }
 
     private void emitResolvedReference(AstNode use, String sourceName) {
@@ -617,11 +682,15 @@ public final class JavaCodeGenerator {
         };
         out.append("new ");
         out.append(javaElementType);
-        out.append('[');
-        out.append("(int) (");
-        emitExpression(type.size());
-        out.append(')');
-        out.append(']');
+        for (Expression dimension : type.dimensions()) {
+            out.append('[');
+            if (dimension != null) {
+                out.append("(int)(");
+                emitExpression(dimension);
+                out.append(')');
+            }
+            out.append(']');
+        }
     }
 
     private String escape(String value, boolean character) {
@@ -678,7 +747,31 @@ public final class JavaCodeGenerator {
     }
 
     private boolean isSizedArray(TypeNode type) {
-        return type != null && type.isArray() && type.size() != null;
+        return type != null && type.isArray() && type.dimensions().stream().anyMatch(Objects::nonNull);
+    }
+
+    private String javaElementType(SemanticType type) {
+        return switch (type) {
+            case INTEGER -> "long";
+            case DECIMAL -> "double";
+            case TEXT -> "String";
+            case BOOLEAN -> "boolean";
+            default -> "Object";
+        };
+    }
+
+    private TypeInfo toTypeInfo(TypeNode type) {
+        int dimensions = (type.dimensions() == null) ? 0 : type.dimensions().size();
+        return switch (type.name().toUpperCase()) {
+            case "INTEGER" -> new TypeInfo(SemanticType.INTEGER, dimensions);
+            case "DECIMAL" -> new TypeInfo(SemanticType.DECIMAL, dimensions);
+            case "BOOLEAN" -> new TypeInfo(SemanticType.BOOLEAN, dimensions);
+            case "TEXT" -> new TypeInfo(SemanticType.TEXT, dimensions);
+            case "VOID" -> new TypeInfo(SemanticType.VOID, dimensions);
+            default -> {
+                throw new IllegalArgumentException("Unsupported type: " + type.name());
+            }
+        };
     }
 
     private String toClassName(String stem) {

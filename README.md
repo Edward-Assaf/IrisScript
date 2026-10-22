@@ -1,4 +1,4 @@
-# IrisScript Language (v1.1.1)
+# IrisScript Language (v1.1.2)
 
 IrisScript is a statically typed, structured programming language designed for clarity, safety, and seamless execution on the Java Virtual Machine. IrisScript compiles into Java source code, which is then compiled and executed using an installed Java Development Kit (JDK).
 
@@ -22,7 +22,7 @@ This repository contains the language specification, compiler pipeline, diagnost
   - [Operators and Expression Precedence](#operators-and-expression-precedence)
   - [Control Flow Statements](#control-flow-statements)
   - [Loops (while)](#loops-while)
-  - [Arrays (1D)](#arrays-1d-for-now)
+  - [Arrays](#arrays)
   - [Console Output: The Terminal Statement](#console-output-the-terminal-statement)
   - [Functions and Signatures](#functions-and-signatures)
   - [Scope Rules: Unit-Local vs Global](#scope-rules-unit-local-vs-global)
@@ -348,33 +348,44 @@ The while loop continues executing as long as its condition remains true:
 
 ---
 
-### Arrays (1D for now)
+### Arrays
 
-IrisScript currently supports fixed-size array declarations and array literal initialization. This is still an early version, so their use is still impractical and limited. Array declaration is similar to variable declaration. Example:
+Arrays in IrisScript represent a list or a sequence of ordered and indexed elements. Arrays come in four basic types, integer[], decimal[], text[], boolean[]. Arrays require a fixed size to be determined at declaration. It can be determined in two ways, either via a size-declaration:
 
-    variable numbers integer[10];
+    variable numbers integer[10]; // an array of integers with size 10 (10 elements)
     variable names text[5];
-    variable values decimal[100];
-    variable flags boolean[3];
 
-An array can be initialized using array literal initialization:
+Or via the array literal initialization:
 
-    variable numbers integer[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
-    constant names text[] = {"Alice", "Bob", "Charlie", "David", "Eve"};
-    constant values decimal[] = {0.0, 1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9};
-    variable flags boolean[] = {true, false, true, false, true, false, true, false, true, false};
+    variable numbers integer[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}; // an array of integers with size 10 (10 elements)
+    variable flags boolean[] = {true, false, true, false};
 
-A constant array has to be initialized with an array literal initialization:
+Similar to variables, arrays can also either be declared as variable arrays or constant arrays. A constant array has to be initialized with an array literal initialization:
 
     constant names text[] = {"Alice", "Bob", "Charlie", "David", "Eve"};
     constant numbers integer[]; // error
 
-An initialized array cannot specify a fixed-size:
+Constant arrays, like constant variables, are not reassignable. However, this does not prohibit reassigning the elements of a constant array, as the constraint only applies to the array reference. Also, an initialized array cannot specify a fixed-size:
 
     variable test integer[] = {1, 2, 3};
     variable test2 integer[3] = {1, 2, 3}; // error
 
-For now, this is the extent of array support in IrisScript. Further improvements are planned soon.
+IrisScript supports multi-dimensional arrays in the same way. A simple 2D array can be defined as follows:
+
+    variable test integer[][] = {{1,2},{3,4},{5,6,7}};
+    variable test2 integer[2][3];
+    variable test3 integer[2][]; // error, no partial-size declarations are allowed
+    variable test4 integer[2][2] = {{1,2},{3,4},{5,6}}; // error, size-declared arrays can't be initialized
+
+Elements of an array in IrisScript can be accessed using the index operator just like any other language. Some examples:
+
+    arr[i]; // 1D-array element access
+    arr[i][j]; // 2D-array element access
+
+Formally, if arr is an n-dimensional array, arr[i] returns the i'th (n-1)-dimensional element of arr. Note that indices can be used as well with text variables to return a specific character.
+
+    variable x text = "hello";
+    variable part text = x[4]; // part = "o"
 
 ---
 
@@ -480,7 +491,7 @@ The compiler features categorized error reporting.
 | E1001 | Error | Expected type name. |
 | E1002 | Error | Expected expression. |
 | E1003 | Error | Expected closing parenthesis. |
-| E1004 | Error | Invalid assignment target; target must be an identifier. |
+| E1004 | Error | Invalid assignment target; target must be an identifier or an index. |
 | E1005 | Error | Expected semicolon. |
 | E1006 | Error | Expected closing brace. |
 | E1007 | Error | Expected opening brace. |
@@ -490,8 +501,9 @@ The compiler features categorized error reporting.
 | E1011 | Error | Expected variable or constant keyword in parameter declaration. |
 | E1012 | Error | Expected function or variable declaration after global. |
 | E1013 | Error | Global declaration attempted inside a local block. |
-| E1014 | Error | Expected closing brackets for array declaration. |
+| E1014 | Error | Expected closing bracket for array declaration. |
 | E1015 | Error | Expected closing brace after array literal. |
+| E1016 | Error | Expected closing bracket for index expression. |
 
 ### Semantic Diagnostics (E2xxx, W2xxx)
 
@@ -515,7 +527,7 @@ The compiler features categorized error reporting.
 | E2016 | Error | Operator requires boolean operands. |
 | E2017 | Error | Function call must target a named function. |
 | E2018 | Error | Expression being invoked is not a function. |
-| E2019 | Error | Argument count mismatch. |
+| E2019 | Error | Function argument count mismatch. |
 | E2020 | Error | Functions cannot be passed or assigned as first-class variable values. |
 | E2021 | Error | Unsupported literal value type. |
 | E2022 | Error | Unary plus or minus requires a numeric operand. |
@@ -525,11 +537,14 @@ The compiler features categorized error reporting.
 | E2026 | Error | Cannot infer the type of an empty array literal. |
 | E2027 | Error | Array literal elements must have compatible types. |
 | E2028 | Error | Array size must be an integer expression. |
-| E2029 | Error | Increment and decrement operators require an identifier operand. |
+| E2029 | Error | Increment and decrement operators require an identifier or an index operand. |
 | E2030 | Error | Increment and decrement operators require a numeric operand. |
 | E2031 | Error | Arrays with an explicit size cannot have an initializer. |
 | E2032 | Error | Size-declaration for arrays is only permitted in declaration statements. |
 | E2033 | Error | Array size must be non-negative. |
+| E2034 | Error | Indices must be integer expressions. |
+| E2035 | Error | Index target must be an array or a text. |
+| E2036 | Error | Multidimensional array has partial size-declaration. |
 | W2001 | Warning | Potential loss of precision converting decimal to integer. |
 
 ### Build and Execution Diagnostics (E3xxx)

@@ -7,8 +7,8 @@ import irisscript.ast.AstNode;
 import irisscript.ast.CompilationUnit;
 import irisscript.source.SourceSpan;
 
-final record Symbol(String name, SymbolKind kind, SemanticType type, boolean isConstant,
-        List<SemanticType> parameterTypes, SourceSpan declarationSpan, AstNode declaration,
+final record Symbol(String name, SymbolKind kind, TypeInfo type, boolean isConstant,
+        List<TypeInfo> parameterTypes, SourceSpan declarationSpan, AstNode declaration,
         CompilationUnit ownerUnit) {
 
     public Symbol {

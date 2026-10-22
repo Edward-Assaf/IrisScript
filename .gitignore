@@ -16,11 +16,11 @@
 !./iris.bat
 
 # 6. Explicitly allow the src directory and all of its contents (source files)
-!./src/
-!./src/**
+!src/
+!src/**
 
 # 7. Explicitly allow the vscode-extension
-!./vscode-extension/irisscript-language-support/irisscript-language-support*.vsix
+!vscode-extension/irisscript-language-support/irisscript-language-support*.vsix
 
 # 8. Explicitly allow .vscode settings directory
 !./.vscode/
