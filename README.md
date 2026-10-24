@@ -1,4 +1,4 @@
-# IrisScript Language (v1.1.4)
+# IrisScript Language (v1.1.5)
 
 IrisScript is a statically typed, structured programming language designed for clarity, safety, and seamless execution on the Java Virtual Machine. IrisScript compiles into Java source code, which is then compiled and executed using an installed Java Development Kit (JDK).
 
@@ -321,6 +321,23 @@ Braces are mandatory for block bodies:
 
 The condition expression must evaluate strictly to boolean.
 
+#### Ternary Operator
+
+It can be used as a short form of conditionals. Formally:
+
+    ? expr -> br1 : br2
+
+is equivalent, in terms of the result, to:
+
+    function ternary <return-type> () {
+        if (expr) {
+            return br1;
+        }
+        return br2;
+    }
+
+Both `br1` and `br2` must be expressions, and they must have compatible types. And `expr` must be a boolean expression, otherwise an error is raised.
+
 #### Loops (while)
 
 The while loop continues executing as long as its condition remains true:
@@ -386,6 +403,13 @@ Formally, if arr is an n-dimensional array, arr[i] returns the i'th (n-1)-dimens
 
     variable x text = "hello";
     variable part text = x[4]; // part = "o"
+
+You can use the `length` keyword to retrieve the length of an array, or even just a text.
+
+    variable x integer[] = {1,2,3};
+    variable y text = "hello";
+    terminal length(x); // 3
+    terminal length(y); // 5
 
 ---
 
@@ -504,6 +528,8 @@ The compiler features categorized error reporting.
 | E1014 | Error | Expected closing bracket for array declaration. |
 | E1015 | Error | Expected closing brace after array literal. |
 | E1016 | Error | Expected closing bracket for index expression. |
+| E1017 | Error | Expected arrow operator after ternary condition. |
+| E1018 | Error | Expected colon between ternary branches. |
 
 ### Semantic Diagnostics (E2xxx, W2xxx)
 
@@ -546,6 +572,7 @@ The compiler features categorized error reporting.
 | E2035 | Error | Index target must be an array or a text. |
 | E2036 | Error | Multidimensional array cannot have partial size-declaration. |
 | E2037 | Error | Length operator requires an array or text operand. |
+| E2038 | Error | Ternary operator's branches must have compatible types. |
 | W2001 | Warning | Potential loss of precision converting decimal to integer. |
 
 ### Build and Execution Diagnostics (E3xxx)

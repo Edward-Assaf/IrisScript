@@ -320,6 +320,7 @@ public final class IrisSemanticAnalyzer {
             case IndexExpression indexExpression -> analyzeIndexExpression(indexExpression, scope);
             case SizeExpression sizeExpression -> analyzeSizeExpression(sizeExpression, scope);
             case LengthExpression lengthExpression -> analyzeLengthExpression(lengthExpression, scope);
+            case TernaryExpression ternaryExpression -> analyzeTernaryExpression(ternaryExpression, scope);
             case ErrorExpression errorExpression -> analyzeErrorExpression(errorExpression);
         };
         semanticModel.bindExpressionType(expression, result);
@@ -615,6 +616,36 @@ public final class IrisSemanticAnalyzer {
             return INTEGER_TYPE;
         }
         reportError("E2037", "Length operator requires an array or text operand", lengthExpression.expression().span());
+        return ERROR_TYPE;
+    }
+
+    private TypeInfo analyzeTernaryExpression(TernaryExpression ternaryExpression, Scope scope) {
+        TypeInfo conditionType = analyzeExpression(ternaryExpression.condition(), scope);
+        if (conditionType.equals(ERROR_TYPE)) {
+            return ERROR_TYPE;
+        }
+        if (!conditionType.equals(BOOLEAN_TYPE)) {
+            reportError("E2005",
+                    "Type mismatch: expected " + typeName(BOOLEAN_TYPE) + ", got " + typeName(conditionType),
+                    ternaryExpression.condition().span());
+            return ERROR_TYPE;
+        }
+        TypeInfo ifTrueType = analyzeExpression(ternaryExpression.ifTrue(), scope);
+        TypeInfo ifFalseType = analyzeExpression(ternaryExpression.ifFalse(), scope);
+        if (ifTrueType.equals(ERROR_TYPE) || ifFalseType.equals(ERROR_TYPE)) {
+            return ERROR_TYPE;
+        }
+        if (ifTrueType.equals(ifFalseType)) {
+            return ifTrueType;
+        }
+        if (isNumeric(ifTrueType) && isNumeric(ifFalseType)) {
+            if (ifTrueType.equals(DECIMAL_TYPE) || ifFalseType.equals(DECIMAL_TYPE)) {
+                return DECIMAL_TYPE;
+            }
+            return INTEGER_TYPE;
+        }
+        SourceSpan span = SourceSpan.covering(ternaryExpression.ifTrue().span(), ternaryExpression.ifFalse().span());
+        reportError("E2038", "Ternary operator's branches must have compatible types", span);
         return ERROR_TYPE;
     }
 

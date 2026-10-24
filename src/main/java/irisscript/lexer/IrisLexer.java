@@ -110,6 +110,9 @@ public final class IrisLexer {
             case '!':
                 addToken(TokenType.OPERATOR_EXCLAMATION);
                 break;
+            case '?':
+                addToken(TokenType.OPERATOR_QUESTION);
+                break;
             case '<':
                 addToken(match('=') ? TokenType.OPERATOR_LESS_EQ : TokenType.OPERATOR_LESS);
                 break;

@@ -598,6 +598,15 @@ public final class JavaCodeGenerator {
                 emitExpression(length.expression());
                 out.append(".length");
             }
+            case TernaryExpression ternary -> {
+                out.append('(');
+                emitExpression(ternary.condition());
+                out.append("? ");
+                emitExpression(ternary.ifTrue());
+                out.append(" : ");
+                emitExpression(ternary.ifFalse());
+                out.append(')');
+            }
             case ErrorExpression ignored ->
                 throw new IllegalStateException("Cannot generate Java from ErrorExpression");
         }

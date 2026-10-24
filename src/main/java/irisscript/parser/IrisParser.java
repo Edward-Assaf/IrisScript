@@ -267,7 +267,7 @@ public final class IrisParser {
     }
 
     private Expression parseAssignment() {
-        Expression expr = parseLogicalOr();
+        Expression expr = parseTernary();
         AssignmentOperator operator = null;
         if (tokens.match(TokenType.OPERATOR_ONE_EQ)) {
             operator = AssignmentOperator.ASSIGN;
@@ -298,6 +298,20 @@ public final class IrisParser {
             return new ErrorExpression(SourceSpan.covering(expr.span(), value.span()));
         }
         return expr;
+    }
+
+    private Expression parseTernary() {
+        if (tokens.match(TokenType.OPERATOR_QUESTION)) {
+            Token questionToken = tokens.previous();
+            Expression condition = parseExpression();
+            consume(TokenType.DELIMITER_ARROW, "E1017", "Expected '->' after ternary condition");
+            Expression ifTrue = parseExpression();
+            consume(TokenType.DELIMITER_COLON, "E1018", "Expected ':' between ternary branches");
+            Expression ifFalse = parseExpression();
+            SourceSpan span = SourceSpan.covering(questionToken.span(), ifFalse.span());
+            return new TernaryExpression(condition, ifTrue, ifFalse, span);
+        }
+        return parseLogicalOr();
     }
 
     private Expression parseLogicalOr() {
