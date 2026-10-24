@@ -1,4 +1,4 @@
-# IrisScript Language (v1.1.3)
+# IrisScript Language (v1.1.4)
 
 IrisScript is a statically typed, structured programming language designed for clarity, safety, and seamless execution on the Java Virtual Machine. IrisScript compiles into Java source code, which is then compiled and executed using an installed Java Development Kit (JDK).
 

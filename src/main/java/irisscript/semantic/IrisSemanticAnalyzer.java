@@ -53,6 +53,10 @@ public final class IrisSemanticAnalyzer {
                 "diagnosticsCollector must not be null");
     }
 
+    // ==========================================
+    // Main
+    // ==========================================
+
     public SemanticModel analyze(List<CompilationUnit> units) {
         Objects.requireNonNull(units, "units must not be null");
         for (CompilationUnit unit : units) {
@@ -155,6 +159,10 @@ public final class IrisSemanticAnalyzer {
             currentFunctionReturnType = previousReturnType;
         }
     }
+
+    // ==========================================
+    // Statements
+    // ==========================================
 
     private void analyzeStatement(Statement statement, Scope scope, Scope unitScope) {
         switch (statement) {
@@ -295,6 +303,10 @@ public final class IrisSemanticAnalyzer {
         };
     }
 
+    // ==========================================
+    // Expressions
+    // ==========================================
+
     private TypeInfo analyzeExpression(Expression expression, Scope scope) {
         TypeInfo result = switch (expression) {
             case AssignmentExpression assignmentExpression -> analyzeAssignmentExpression(assignmentExpression, scope);
@@ -306,6 +318,8 @@ public final class IrisSemanticAnalyzer {
             case UnaryExpression unaryExpression -> analyzeUnaryExpression(unaryExpression, scope);
             case ArrayLiteralExpression arrayExpression -> analyzeArrayExpression(arrayExpression, scope);
             case IndexExpression indexExpression -> analyzeIndexExpression(indexExpression, scope);
+            case SizeExpression sizeExpression -> analyzeSizeExpression(sizeExpression, scope);
+            case LengthExpression lengthExpression -> analyzeLengthExpression(lengthExpression, scope);
             case ErrorExpression errorExpression -> analyzeErrorExpression(errorExpression);
         };
         semanticModel.bindExpressionType(expression, result);
@@ -584,9 +598,33 @@ public final class IrisSemanticAnalyzer {
         return ERROR_TYPE;
     }
 
+    private TypeInfo analyzeSizeExpression(SizeExpression sizeExpression, Scope scope) {
+        TypeInfo targetType = resolveType(sizeExpression.targetType(), false);
+        if (targetType.equals(ERROR_TYPE)) {
+            return ERROR_TYPE;
+        }
+        return INTEGER_TYPE;
+    }
+
+    private TypeInfo analyzeLengthExpression(LengthExpression lengthExpression, Scope scope) {
+        TypeInfo targetType = analyzeExpression(lengthExpression.expression(), scope);
+        if (targetType.equals(ERROR_TYPE)) {
+            return ERROR_TYPE;
+        }
+        if (targetType.isArray() || targetType.equals(TEXT_TYPE)) {
+            return INTEGER_TYPE;
+        }
+        reportError("E2037", "Length operator requires an array or text operand", lengthExpression.expression().span());
+        return ERROR_TYPE;
+    }
+
     private TypeInfo analyzeErrorExpression(ErrorExpression errorExpression) {
         return ERROR_TYPE;
     }
+
+    // ==========================================
+    // Helpers
+    // ==========================================
 
     private TypeInfo analyzeNumericBinary(BinaryExpression expression, TypeInfo leftType, TypeInfo rightType) {
         if (rightType.equals(TEXT_TYPE) && leftType.equals(TEXT_TYPE) && expression.operator() == BinaryOperator.ADD) {

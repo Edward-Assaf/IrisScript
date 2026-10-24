@@ -481,9 +481,23 @@ public final class IrisParser {
         if (tokens.match(TokenType.KEYWORD_FALSE)) {
             return new LiteralExpression(Boolean.FALSE, tokens.previous().span());
         }
+        if (tokens.match(TokenType.KEYWORD_SIZE)) {
+            Token sizeToken = tokens.previous();
+            consume(TokenType.DELIMITER_LPAREN, "E1008", "Expected '(' after 'size'");
+            TypeNode targetType = parseType();
+            Token rparen = consume(TokenType.DELIMITER_RPAREN, "E1003", "Expected ')' after type name");
+            return new SizeExpression(targetType, spanFrom(sizeToken, rparen));
+        }
+        if (tokens.match(TokenType.KEYWORD_LENGTH)) {
+            Token lengthToken = tokens.previous();
+            consume(TokenType.DELIMITER_LPAREN, "E1008", "Expected '(' after 'length'");
+            Expression expression = parseExpression();
+            Token rparen = consume(TokenType.DELIMITER_RPAREN, "E1003", "Expected ')' after expression");
+            return new LengthExpression(expression, spanFrom(lengthToken, rparen));
+        }
         if (tokens.match(TokenType.IDENTIFIER)) {
-            Token token = tokens.previous();
-            return new IdentifierExpression(token.lexeme(), token.span());
+            Token idToken = tokens.previous();
+            return new IdentifierExpression(idToken.lexeme(), idToken.span());
         }
         if (tokens.match(TokenType.DELIMITER_LPAREN)) {
             Token lparen = tokens.previous();

@@ -565,6 +565,39 @@ public final class JavaCodeGenerator {
                     out.append("))]");
                 }
             }
+            case SizeExpression size -> {
+                TypeNode type = size.targetType();
+                switch (type.name()) {
+                    case "integer":
+                        out.append("8");
+                        break;
+                    case "decimal":
+                        out.append("8");
+                        break;
+                    case "boolean":
+                        out.append("1");
+                        break;
+                    case "text":
+                        out.append("8");
+                        break;
+                    default:
+                        throw new IllegalStateException("Unsupported type for size(): " + type.name());
+                }
+            }
+            case LengthExpression length -> {
+                TypeInfo type = semanticModel.expressionType(length.expression()).orElse(null);
+                if (type == null) {
+                    emitExpression(length.expression());
+                    return;
+                }
+                if (type.equals(IrisSemanticAnalyzer.TEXT_TYPE)) {
+                    emitExpression(length.expression());
+                    out.append(".length()");
+                    return;
+                }
+                emitExpression(length.expression());
+                out.append(".length");
+            }
             case ErrorExpression ignored ->
                 throw new IllegalStateException("Cannot generate Java from ErrorExpression");
         }
