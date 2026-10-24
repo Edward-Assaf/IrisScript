@@ -544,7 +544,8 @@ The compiler features categorized error reporting.
 | E2033 | Error | Array size must be non-negative. |
 | E2034 | Error | Indices must be integer expressions. |
 | E2035 | Error | Index target must be an array or a text. |
-| E2036 | Error | Multidimensional array has partial size-declaration. |
+| E2036 | Error | Multidimensional array cannot have partial size-declaration. |
+| E2037 | Error | Length operator requires an array or text operand. |
 | W2001 | Warning | Potential loss of precision converting decimal to integer. |
 
 ### Build and Execution Diagnostics (E3xxx)
@@ -778,6 +779,29 @@ Run both files together:
             terminal "\n";
         }
     }
+
+### 5. Arrays and the length keyword
+
+    function evensAndOdds void (constant arr integer[]) {
+        variable evens integer = 0;
+        variable odds integer = 0;
+        variable index integer = 0;
+        while (index < length(arr)) {
+            if (arr[index++] % 2 == 0) {
+                evens++;
+            }
+            else {
+                odds++;
+            }
+        }
+        terminal evens;
+        terminal " ";
+        terminal odds;
+    }
+
+    evensAndOdds({2,2,4,5,7,4,3});
+
+Note that the `length` keyword can be used with text as well.
 
 ---
 
