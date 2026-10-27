@@ -334,6 +334,9 @@ public final class IrisLexer {
             Map.entry("global", TokenType.KEYWORD_GLOBAL),
             Map.entry("terminal", TokenType.KEYWORD_TERMINAL),
             Map.entry("length", TokenType.KEYWORD_LENGTH),
-            Map.entry("size", TokenType.KEYWORD_SIZE));
+            Map.entry("size", TokenType.KEYWORD_SIZE),
+            Map.entry("switch", TokenType.KEYWORD_SWITCH),
+            Map.entry("when", TokenType.KEYWORD_WHEN),
+            Map.entry("otherwise", TokenType.KEYWORD_OTHERWISE));
 
 }

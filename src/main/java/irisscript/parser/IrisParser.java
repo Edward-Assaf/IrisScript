@@ -128,6 +128,9 @@ public final class IrisParser {
         if (tokens.check(TokenType.KEYWORD_WHILE)) {
             return parseWhileStatement();
         }
+        if (tokens.check(TokenType.KEYWORD_SWITCH)) {
+            return parseSwitchStatement();
+        }
         if (tokens.match(TokenType.KEYWORD_RETURN)) {
             return parseReturnStatement(tokens.previous());
         }
@@ -202,6 +205,41 @@ public final class IrisParser {
         BlockStatement body = parseBlockStatement();
         SourceSpan span = SourceSpan.covering(whileKeyword.span(), body.span());
         return new WhileStatement(condition, body, span);
+    }
+
+    private SwitchStatement parseSwitchStatement() {
+        Token switchKeyword = tokens.consume(); // 'switch'
+        consume(TokenType.DELIMITER_LPAREN, "E1008", "Expected '(' after 'switch'");
+        Expression target = parseExpression();
+        consume(TokenType.DELIMITER_RPAREN, "E1003", "Expected ')' after switch target");
+        consume(TokenType.DELIMITER_LBRACE, "E1007", "Expected '{' for 'switch' statement'");
+        List<Expression> caseValues = new ArrayList<>();
+        List<BlockStatement> caseStatements = new ArrayList<>();
+        BlockStatement defaultCase = null;
+        while (!tokens.check(TokenType.DELIMITER_RBRACE) && !tokens.isAtEnd()) {
+            if (tokens.match(TokenType.KEYWORD_WHEN)) {
+                Expression caseValue = parseExpression();
+                BlockStatement caseBlock = parseBlockStatement();
+                caseValues.add(caseValue);
+                caseStatements.add(caseBlock);
+            } else if (tokens.match(TokenType.KEYWORD_OTHERWISE)) {
+                Token otherwiseToken = tokens.previous();
+                BlockStatement defaultBlock = parseBlockStatement();
+                if (defaultCase != null) {
+                    reportError("E1019", "A default 'otherwise' branch already exists in this 'switch' statement",
+                            otherwiseToken.span());
+                } else {
+                    defaultCase = defaultBlock;
+                }
+            } else {
+                Token unknown = tokens.consume();
+                reportError("E1020", "Expected 'when' or 'otherwise', found '" + unknown.lexeme(), unknown.span());
+                throw new ParseException();
+            }
+        }
+        Token closingBrace = consume(TokenType.DELIMITER_RBRACE, "E1006", "Expected '}' after 'switch' statement");
+        SourceSpan span = spanFrom(switchKeyword, closingBrace);
+        return new SwitchStatement(target, caseValues, caseStatements, defaultCase, span);
     }
 
     private ReturnStatement parseReturnStatement(Token returnToken) {
@@ -513,6 +551,9 @@ public final class IrisParser {
             Token idToken = tokens.previous();
             return new IdentifierExpression(idToken.lexeme(), idToken.span());
         }
+        if (tokens.match(TokenType.KEYWORD_SWITCH)) {
+            return parseSwitchExpression(tokens.previous());
+        }
         if (tokens.match(TokenType.DELIMITER_LPAREN)) {
             Token lparen = tokens.previous();
             Expression inner = parseExpression();
@@ -536,6 +577,48 @@ public final class IrisParser {
             tokens.consume();
         }
         return new ErrorExpression(current.span());
+    }
+
+    private SwitchExpression parseSwitchExpression(Token switchKeyword) {
+        consume(TokenType.DELIMITER_LPAREN, "E1008", "Expected '(' after 'switch'");
+        Expression target = parseExpression();
+        consume(TokenType.DELIMITER_RPAREN, "E1003", "Expected ')' after switch target");
+        consume(TokenType.DELIMITER_LBRACE, "E1007", "Expected '{' for 'switch' expression'");
+        List<Expression> caseValues = new ArrayList<>();
+        List<Expression> caseExpressions = new ArrayList<>();
+        Expression defaultCase = null;
+        while (!tokens.check(TokenType.DELIMITER_RBRACE) && !tokens.isAtEnd()) {
+            if (tokens.match(TokenType.KEYWORD_WHEN)) {
+                Expression caseValue = parseExpression();
+                consume(TokenType.DELIMITER_ARROW, "E1021", "Expected '->' after 'when' branch");
+                Expression caseExpression = parseExpression();
+                consume(TokenType.DELIMITER_SEMICOLON, "E1005", "Expected ';' after branch expression");
+                caseValues.add(caseValue);
+                caseExpressions.add(caseExpression);
+            } else if (tokens.match(TokenType.KEYWORD_OTHERWISE)) {
+                Token otherwiseToken = tokens.previous();
+                consume(TokenType.DELIMITER_ARROW, "E1021", "Expected '->' after 'otherwise' branch");
+                Expression defaultExpression = parseExpression();
+                consume(TokenType.DELIMITER_SEMICOLON, "E1005", "Expected ';' after branch expression");
+                if (defaultCase != null) {
+                    reportError("E1019", "A default 'otherwise' branch already exists in this 'switch' expression",
+                            otherwiseToken.span());
+                } else {
+                    defaultCase = defaultExpression;
+                }
+            } else {
+                Token unknown = tokens.consume();
+                reportError("E1020", "Expected 'when' or 'otherwise', found '" + unknown.lexeme(), unknown.span());
+                throw new ParseException();
+            }
+        }
+        if (defaultCase == null) {
+            reportError("E1022", "A 'switch' expression must have an 'otherwise' branch", switchKeyword.span());
+            throw new ParseException();
+        }
+        Token closingBrace = consume(TokenType.DELIMITER_RBRACE, "E1006", "Expected '}' after 'switch' expression");
+        SourceSpan span = spanFrom(switchKeyword, closingBrace);
+        return new SwitchExpression(target, caseValues, caseExpressions, defaultCase, span);
     }
 
     // ==========================================
@@ -637,7 +720,7 @@ public final class IrisParser {
     private boolean isStatementStart(TokenType type) {
         return switch (type) {
             case KEYWORD_IF, KEYWORD_WHILE, KEYWORD_RETURN, KEYWORD_BREAK, KEYWORD_SKIP, KEYWORD_VARIABLE,
-                    KEYWORD_CONSTANT, DELIMITER_LBRACE, KEYWORD_GLOBAL, KEYWORD_TERMINAL ->
+                    KEYWORD_CONSTANT, DELIMITER_LBRACE, KEYWORD_GLOBAL, KEYWORD_TERMINAL, KEYWORD_SWITCH ->
                 true;
             default -> false;
         };

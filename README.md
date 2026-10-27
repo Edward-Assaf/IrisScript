@@ -1,4 +1,4 @@
-# IrisScript Language (v1.1.5)
+# IrisScript Language (v1.2)
 
 IrisScript is a statically typed, structured programming language designed for clarity, safety, and seamless execution on the Java Virtual Machine. IrisScript compiles into Java source code, which is then compiled and executed using an installed Java Development Kit (JDK).
 
@@ -530,6 +530,10 @@ The compiler features categorized error reporting.
 | E1016 | Error | Expected closing bracket for index expression. |
 | E1017 | Error | Expected arrow operator after ternary condition. |
 | E1018 | Error | Expected colon between ternary branches. |
+| E1019 | Error | Duplicate 'otherwise' branches in switch. |
+| E1020 | Error | Expected 'when' or 'otherwise' branch keyword. |
+| E1021 | Error | Expected arrow operator after switch branch. |
+| E1022 | Error | Missing 'otherwise' branch in switch expression. |
 
 ### Semantic Diagnostics (E2xxx, W2xxx)
 
@@ -573,6 +577,10 @@ The compiler features categorized error reporting.
 | E2036 | Error | Multidimensional array cannot have partial size-declaration. |
 | E2037 | Error | Length operator requires an array or text operand. |
 | E2038 | Error | Ternary operator's branches must have compatible types. |
+| E2039 | Error | Invalid expression type for switch target. |
+| E2040 | Error | Only literal expressions are allowed in switch's 'when' branches. |
+| E2041 | Error | Only unique 'when' branch expressions are allowed in switch. |
+| E2042 | Error | All branches of a switch expression must return the same type. |
 | W2001 | Warning | Potential loss of precision converting decimal to integer. |
 
 ### Build and Execution Diagnostics (E3xxx)

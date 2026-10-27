@@ -2,10 +2,12 @@ package irisscript.semantic;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 import irisscript.ast.CompilationUnit;
 import irisscript.ast.declarations.Declaration;
@@ -176,6 +178,7 @@ public final class IrisSemanticAnalyzer {
                 analyzeVariableStatement(variableStatement, scope, unitScope);
             case WhileStatement whileStatement -> analyzeWhileStatement(whileStatement, scope, unitScope);
             case TerminalStatement terminalStatement -> analyzeTerminalStatement(terminalStatement, scope);
+            case SwitchStatement switchStatement -> analyzeSwitchStatement(switchStatement, scope, unitScope);
             case ErrorStatement errorStatement -> analyzeErrorStatement(errorStatement);
         }
     }
@@ -288,6 +291,16 @@ public final class IrisSemanticAnalyzer {
         }
     }
 
+    private void analyzeSwitchStatement(SwitchStatement switchStatement, Scope scope, Scope unitScope) {
+        analyzeSwitchTargetAndUniqueness(switchStatement.target(), switchStatement.caseValues(), scope);
+        for (BlockStatement caseBody : switchStatement.caseStatements()) {
+            analyzeBlockStatement(caseBody, scope, unitScope);
+        }
+        if (switchStatement.defaultCase() != null) {
+            analyzeBlockStatement(switchStatement.defaultCase(), scope, unitScope);
+        }
+    }
+
     private void analyzeErrorStatement(ErrorStatement errorStatement) {
         // Do nothing, parser already handles this
     }
@@ -298,7 +311,10 @@ public final class IrisSemanticAnalyzer {
             case BlockStatement blockStatement -> blockStatement.statements().stream()
                     .anyMatch(this::returnsOnEveryPath);
             case IfStatement ifStatement -> returnsOnEveryPath(ifStatement.thenBranch())
-                    && (ifStatement.elseBranch() == null || returnsOnEveryPath(ifStatement.elseBranch()));
+                    && ifStatement.elseBranch() != null && returnsOnEveryPath(ifStatement.elseBranch());
+            case SwitchStatement switchStatement -> switchStatement.defaultCase() != null
+                    && switchStatement.caseStatements().stream().allMatch(this::returnsOnEveryPath)
+                    && returnsOnEveryPath(switchStatement.defaultCase());
             default -> false;
         };
     }
@@ -321,6 +337,7 @@ public final class IrisSemanticAnalyzer {
             case SizeExpression sizeExpression -> analyzeSizeExpression(sizeExpression, scope);
             case LengthExpression lengthExpression -> analyzeLengthExpression(lengthExpression, scope);
             case TernaryExpression ternaryExpression -> analyzeTernaryExpression(ternaryExpression, scope);
+            case SwitchExpression switchExpression -> analyzeSwitchExpression(switchExpression, scope);
             case ErrorExpression errorExpression -> analyzeErrorExpression(errorExpression);
         };
         semanticModel.bindExpressionType(expression, result);
@@ -649,6 +666,44 @@ public final class IrisSemanticAnalyzer {
         return ERROR_TYPE;
     }
 
+    private TypeInfo analyzeSwitchExpression(SwitchExpression switchExpression, Scope scope) {
+        analyzeSwitchTargetAndUniqueness(switchExpression.target(), switchExpression.caseValues(), scope);
+        TypeInfo branchReturnType = null;
+        for (Expression caseBody : switchExpression.caseExpressions()) {
+            TypeInfo expressionType = analyzeExpression(caseBody, scope);
+            if (expressionType.equals(ERROR_TYPE)) {
+                continue;
+            }
+            if (branchReturnType == null) {
+                branchReturnType = expressionType;
+            } else if (isNumeric(branchReturnType) && isNumeric(expressionType)) {
+                if (branchReturnType.equals(INTEGER_TYPE) && expressionType.equals(DECIMAL_TYPE)) {
+                    branchReturnType = DECIMAL_TYPE;
+                }
+            } else if (!branchReturnType.equals(expressionType)) {
+                reportError("E2042", "All branches of a 'switch' expression must return the same type",
+                        caseBody.span());
+            }
+        }
+        if (switchExpression.defaultCase() != null) {
+            TypeInfo expressionType = analyzeExpression(switchExpression.defaultCase(), scope);
+            if (branchReturnType == null) {
+                branchReturnType = expressionType;
+            } else if (isNumeric(branchReturnType) && isNumeric(expressionType)) {
+                if (branchReturnType.equals(INTEGER_TYPE) && expressionType.equals(DECIMAL_TYPE)) {
+                    branchReturnType = DECIMAL_TYPE;
+                }
+            } else if (!branchReturnType.equals(expressionType)) {
+                reportError("E2042", "All branches of a 'switch' expression must return the same type",
+                        switchExpression.defaultCase().span());
+            }
+        }
+        if (branchReturnType == null) {
+            return ERROR_TYPE;
+        }
+        return branchReturnType;
+    }
+
     private TypeInfo analyzeErrorExpression(ErrorExpression errorExpression) {
         return ERROR_TYPE;
     }
@@ -656,6 +711,64 @@ public final class IrisSemanticAnalyzer {
     // ==========================================
     // Helpers
     // ==========================================
+
+    private void analyzeSwitchTargetAndUniqueness(Expression switchTarget, List<Expression> caseValues, Scope scope) {
+        TypeInfo targetType = analyzeExpression(switchTarget, scope);
+        boolean validTarget = targetType.equals(INTEGER_TYPE) || targetType.equals(DECIMAL_TYPE)
+                || targetType.equals(TEXT_TYPE) || targetType.equals(BOOLEAN_TYPE);
+        if (!targetType.equals(ERROR_TYPE) && !validTarget) {
+            reportError("E2039", "'switch' target must be an integer, decimal, boolean or text", switchTarget.span());
+        }
+        Set<Object> uniqueCases = new HashSet<>();
+        for (Expression caseValue : caseValues) {
+            if (!isSwitchCaseAllowed(caseValue)) {
+                reportError("E2040", "Only literal expressions are allowed in 'when' branches", caseValue.span());
+                continue;
+            }
+            TypeInfo caseValueType = analyzeExpression(caseValue, scope);
+            validateType(targetType, caseValueType, caseValue.span());
+            Object key = switchCaseKey(caseValue);
+            if (key != null && !uniqueCases.add(key)) {
+                reportError("E2041", "Only unique 'when' branch expressions are allowed", caseValue.span());
+            }
+        }
+    }
+
+    private boolean isSwitchCaseAllowed(Expression expression) {
+        return expression instanceof LiteralExpression || (expression instanceof UnaryExpression unary
+                && (unary.operator() == UnaryOperator.NEGATIVE || unary.operator() == UnaryOperator.POSITIVE
+                        || unary.operator() == UnaryOperator.NOT)
+                && unary.operand() instanceof LiteralExpression);
+    }
+
+    private Object switchCaseKey(Expression expression) {
+        if (expression instanceof LiteralExpression literal) {
+            if (literal.value() instanceof Number number) {
+                return Double.valueOf(number.doubleValue());
+            }
+            if (literal.value() instanceof String) {
+                return literal.value();
+            }
+            if (literal.value() instanceof Boolean) {
+                return literal.value();
+            }
+        }
+        if (expression instanceof UnaryExpression unary && unary.operand() instanceof LiteralExpression literal) {
+            Object value = literal.value();
+            if (value instanceof Number number) {
+                return unary.operator() == UnaryOperator.NEGATIVE ? Double.valueOf(-number.doubleValue())
+                        : Double.valueOf(number.doubleValue());
+
+            }
+            if (value instanceof String) {
+                return value;
+            }
+            if (value instanceof Boolean bool) {
+                return unary.operator() == UnaryOperator.NOT ? !bool : bool;
+            }
+        }
+        return null;
+    }
 
     private TypeInfo analyzeNumericBinary(BinaryExpression expression, TypeInfo leftType, TypeInfo rightType) {
         if (rightType.equals(TEXT_TYPE) && leftType.equals(TEXT_TYPE) && expression.operator() == BinaryOperator.ADD) {

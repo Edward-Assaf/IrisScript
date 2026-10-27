@@ -42,12 +42,15 @@ public final class JavaCodeGenerator {
 
     private static final String GLOBAL_CLASS = "IrisGlobals";
 
+    private int internalSwitchVariableID = 0;
+
     public JavaCodeGenerator(SemanticModel semanticModel) {
         this.semanticModel = Objects.requireNonNull(semanticModel);
     }
 
     public List<GeneratedSource> generate(List<CompilationUnit> units, SourceManager sources) {
         classNames.clear();
+        this.internalSwitchVariableID = 0;
         for (CompilationUnit unit : units) {
             SourceFile source = sources.get(unit.span().sourceID());
             String filename = Path.of(source.getName()).getFileName().toString();
@@ -391,6 +394,36 @@ public final class JavaCodeGenerator {
                 emitExpression(terminal.expression());
                 out.append(");\n");
             }
+            case SwitchStatement switchStatement -> {
+                emitIndent();
+                if (switchStatement.caseValues().isEmpty()) {
+                    if (switchStatement.defaultCase() != null) {
+                        emitStatement(switchStatement.defaultCase());
+                    }
+                    break;
+                }
+                TypeInfo targetType = semanticModel.expressionType(switchStatement.target()).orElse(null);
+                String internalVariableName = emitSwitchVariableName(switchStatement.target(), targetType);
+                emitIndent();
+                out.append("if");
+                emitSwitchConditionPart(targetType, internalVariableName, switchStatement.caseValues().get(0));
+                emitBlockInline(switchStatement.caseStatements().get(0));
+                out.append('\n');
+                for (int i = 1; i < switchStatement.caseValues().size(); i++) {
+                    emitIndent();
+                    out.append("else if");
+                    emitSwitchConditionPart(targetType, internalVariableName, switchStatement.caseValues().get(i));
+                    emitBlockInline(switchStatement.caseStatements().get(i));
+                    out.append('\n');
+                }
+                if (switchStatement.defaultCase() != null) {
+                    emitIndent();
+                    out.append("else ");
+                    emitBlockInline(switchStatement.defaultCase());
+                    out.append('\n');
+                }
+                out.append('\n');
+            }
             case ErrorStatement ignored -> throw new IllegalStateException("Cannot generate Java from ErrorStatement");
         }
     }
@@ -607,6 +640,49 @@ public final class JavaCodeGenerator {
                 emitExpression(ternary.ifFalse());
                 out.append(')');
             }
+            case SwitchExpression switchExpression -> {
+                TypeInfo returnType = semanticModel.expressionType(switchExpression).orElse(null);
+                TypeInfo targetType = semanticModel.expressionType(switchExpression.target()).orElse(null);
+                out.append("((java.util.function.Supplier<");
+                emitJavaElementTypeAndDimensionsBoxed(returnType);
+                out.append(">) () -> { ");
+                if (switchExpression.caseValues().isEmpty()) {
+                    out.append("return ");
+                    emitExpressionAs(returnType, switchExpression.defaultCase());
+                    out.append("; }).get()");
+                    break;
+                }
+                out.append('\n');
+                indent++;
+                emitIndent();
+                String internalVariableName = emitSwitchVariableName(switchExpression.target(), targetType);
+                emitIndent();
+                out.append("if");
+                emitSwitchConditionPart(targetType, internalVariableName, switchExpression.caseValues().get(0));
+                out.append("return ");
+                emitExpressionAs(returnType, switchExpression.caseExpressions().get(0));
+                out.append(";\n");
+                for (int i = 1; i < switchExpression.caseValues().size(); i++) {
+                    emitIndent();
+                    out.append("else if");
+                    emitSwitchConditionPart(targetType, internalVariableName, switchExpression.caseValues().get(i));
+                    out.append("return ");
+                    emitExpressionAs(returnType, switchExpression.caseExpressions().get(i));
+                    out.append(";\n");
+                }
+                emitIndent();
+                out.append("else return ");
+                emitExpressionAs(returnType, switchExpression.defaultCase());
+                out.append(";\n");
+                indent--;
+                emitIndent();
+                out.append("}).get()");
+                if (returnType.equals(IrisSemanticAnalyzer.INTEGER_TYPE)
+                        || returnType.equals(IrisSemanticAnalyzer.DECIMAL_TYPE)) {
+                    out.append('.');
+                    emitJavaNumericBoxedCastToUnboxed(returnType);
+                }
+            }
             case ErrorExpression ignored ->
                 throw new IllegalStateException("Cannot generate Java from ErrorExpression");
         }
@@ -625,6 +701,68 @@ public final class JavaCodeGenerator {
             out.append("))");
         } else {
             emitExpression(expression);
+        }
+    }
+
+    private String emitSwitchVariableName(Expression target, TypeInfo targetType) {
+        String internalVariableName = "__irisSwitchVar" + (internalSwitchVariableID++);
+        emitJavaElementTypeAndDimensions(targetType);
+        out.append(" " + internalVariableName + " = ");
+        emitExpression(target);
+        out.append(";\n");
+        return internalVariableName;
+    }
+
+    private void emitJavaElementTypeAndDimensionsBoxed(TypeInfo type) {
+        if (type == null) {
+            return;
+        }
+        if (type.isArray()) {
+            emitJavaElementTypeAndDimensions(type);
+            return;
+        }
+        switch (type.type()) {
+            case INTEGER -> out.append("Long");
+            case DECIMAL -> out.append("Double");
+            case BOOLEAN -> out.append("Boolean");
+            case TEXT -> out.append("String");
+            default -> throw new IllegalStateException("Unsupported type for Java element type: " + type.type());
+        }
+    }
+
+    private void emitJavaElementTypeAndDimensions(TypeInfo type) {
+        if (type == null) {
+            return;
+        }
+        out.append(javaElementType(type.type()));
+        out.append("[]".repeat(type.dimensions()));
+    }
+
+    private void emitJavaNumericBoxedCastToUnboxed(TypeInfo type) {
+        if (type == null) {
+            return;
+        }
+        switch (type.type()) {
+            case INTEGER -> out.append("longValue()");
+            case DECIMAL -> out.append("doubleValue()");
+            default -> throw new IllegalStateException("Unsupported type for Java element type: " + type.type());
+        }
+    }
+
+    private void emitSwitchConditionPart(TypeInfo targetType, String internalVariableName,
+            Expression caseValue) {
+        out.append("( ");
+        if (targetType != null && targetType.equals(IrisSemanticAnalyzer.TEXT_TYPE)) {
+            out.append("java.util.Objects.equals(");
+            out.append(internalVariableName);
+            out.append(", ");
+            emitExpression(caseValue);
+            out.append(")) ");
+        } else {
+            out.append(internalVariableName);
+            out.append(" == ");
+            emitExpressionAs(targetType, caseValue);
+            out.append(") ");
         }
     }
 

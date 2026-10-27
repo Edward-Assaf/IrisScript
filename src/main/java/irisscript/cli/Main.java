@@ -44,6 +44,7 @@ public class Main {
             default:
                 throw new IllegalStateException("Unexpected command: " + arguments.command());
         }
+        System.out.println();
         for (Diagnostic diagnostic : diagnosticsCollector.getDiagnostics()) {
             System.err.println(diagnosticsFormatter.format(diagnostic));
         }
