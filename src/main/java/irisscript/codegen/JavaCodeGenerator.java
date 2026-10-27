@@ -649,9 +649,16 @@ public final class JavaCodeGenerator {
                 emitJavaElementTypeAndDimensionsBoxed(returnType);
                 out.append(">) () -> { ");
                 if (switchExpression.caseValues().isEmpty()) {
-                    out.append("return ");
-                    emitExpressionAs(returnType, switchExpression.defaultCase());
-                    out.append("; }).get()");
+                    out.append("return ((");
+                    emitJavaElementTypeAndDimensions(returnType);
+                    out.append(") (");
+                    emitExpression(switchExpression.defaultCase());
+                    out.append(")); }).get()");
+                    if (returnType.equals(IrisSemanticAnalyzer.INTEGER_TYPE)
+                            || returnType.equals(IrisSemanticAnalyzer.DECIMAL_TYPE)) {
+                        out.append('.');
+                        emitJavaNumericBoxedCastToUnboxed(returnType);
+                    }
                     break;
                 }
                 out.append('\n');
@@ -661,21 +668,27 @@ public final class JavaCodeGenerator {
                 emitIndent();
                 out.append("if");
                 emitSwitchConditionPart(targetType, internalVariableName, switchExpression.caseValues().get(0));
-                out.append("return ");
-                emitExpressionAs(returnType, switchExpression.caseExpressions().get(0));
-                out.append(";\n");
+                out.append("return ((");
+                emitJavaElementTypeAndDimensions(returnType);
+                out.append(") (");
+                emitExpression(switchExpression.caseExpressions().get(0));
+                out.append("));\n");
                 for (int i = 1; i < switchExpression.caseValues().size(); i++) {
                     emitIndent();
                     out.append("else if");
                     emitSwitchConditionPart(targetType, internalVariableName, switchExpression.caseValues().get(i));
-                    out.append("return ");
-                    emitExpressionAs(returnType, switchExpression.caseExpressions().get(i));
-                    out.append(";\n");
+                    out.append("return ((");
+                    emitJavaElementTypeAndDimensions(returnType);
+                    out.append(") (");
+                    emitExpression(switchExpression.caseExpressions().get(i));
+                    out.append("));\n");
                 }
                 emitIndent();
-                out.append("else return ");
-                emitExpressionAs(returnType, switchExpression.defaultCase());
-                out.append(";\n");
+                out.append("else return ((");
+                emitJavaElementTypeAndDimensions(returnType);
+                out.append(") (");
+                emitExpression(switchExpression.defaultCase());
+                out.append("));\n");
                 indent--;
                 emitIndent();
                 out.append("}).get()");
