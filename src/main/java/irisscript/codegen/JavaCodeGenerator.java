@@ -602,16 +602,16 @@ public final class JavaCodeGenerator {
                 TypeNode type = size.targetType();
                 switch (type.name()) {
                     case "integer":
-                        out.append("8");
+                        out.append("8L");
                         break;
                     case "decimal":
-                        out.append("8");
+                        out.append("8L");
                         break;
                     case "boolean":
-                        out.append("1");
+                        out.append("1L");
                         break;
                     case "text":
-                        out.append("8");
+                        out.append("8L");
                         break;
                     default:
                         throw new IllegalStateException("Unsupported type for size(): " + type.name());
@@ -619,17 +619,19 @@ public final class JavaCodeGenerator {
             }
             case LengthExpression length -> {
                 TypeInfo type = semanticModel.expressionType(length.expression()).orElse(null);
+                out.append("((long) (");
                 if (type == null) {
                     emitExpression(length.expression());
+                    out.append("))");
                     return;
                 }
                 if (type.equals(IrisSemanticAnalyzer.TEXT_TYPE)) {
                     emitExpression(length.expression());
-                    out.append(".length()");
+                    out.append(".length()))");
                     return;
                 }
                 emitExpression(length.expression());
-                out.append(".length");
+                out.append(".length))");
             }
             case TernaryExpression ternary -> {
                 out.append('(');

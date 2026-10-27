@@ -1,4 +1,4 @@
-# IrisScript Language (v1.2)
+# IrisScript Language (v1.2.1)
 
 IrisScript is a statically typed, structured programming language designed for clarity, safety, and seamless execution on the Java Virtual Machine. IrisScript compiles into Java source code, which is then compiled and executed using an installed Java Development Kit (JDK).
 
@@ -327,16 +327,80 @@ It can be used as a short form of conditionals. Formally:
 
     ? expr -> br1 : br2
 
-is equivalent, in terms of the result, to:
+is exactly equivalent, in terms of the result, to calling this function:
 
-    function ternary <return-type> () {
+    function ternary <return-type> (expr, br1, br2) {
         if (expr) {
             return br1;
         }
         return br2;
     }
 
-Both `br1` and `br2` must be expressions, and they must have compatible types. And `expr` must be a boolean expression, otherwise an error is raised.
+Both `br1` and `br2` must be expressions, and they must have compatible types. And `expr` must be a boolean expression, otherwise an error is raised. A simple example would be:
+
+    variable x integer = 12;
+    variable y text = ? (x % 2 == 0) -> "even" : "odd";
+    terminal y; // prints 'even'
+
+#### Switch Conditional
+
+There are two kinds of switch conditionals, switch statements and switch expressions. A switch statement is another form of if-elseif-else branching where a target is compared with values. Formally:
+
+    switch (target) {
+        when val1 {
+            statements1
+        }
+        when val2 {
+            statements2
+        }
+        otherwise {
+            statements3
+        }
+    }
+
+is exactly equivalent, in terms of the result, to writing:
+
+    if (target equals val1) {
+        statements1
+    } elseif (target equals val2) {
+        statements2
+    } else {
+        statements3
+    }
+
+However, these rules apply to switch statements:
+1. Duplicate 'when' branches are not allowed. In the previous example, val1 and val2 cannot be expressions of the same value.
+2. Expressions of 'when' branches can only be literal primitive expressions (integer, decimal, text, boolean).
+3. The target of a switch statement must be an expression that returns a primitive (integer, decimal, text, boolean). An array, for example, is not a valid switch statement target.
+4. The 'otherwise' branch is not mandatory, equivalent to the 'else' branch.
+
+A switch expression, on the other hand, replaces statements of each branch with an expression to return. It can be thought of as a multi-branch ternary operator. Formally:
+
+    switch(target) {
+        case val1 -> expr1;
+        case val2 -> expr2;
+        otherwise -> expr3;
+    }
+
+is exactly equivalent, in terms of the result, to calling this function:
+
+    function switch <return-type> (target, val1, val2, expr1, expr2, expr3) {
+        if (target equals val1) {
+            return expr1;
+        } elseif (target equals val2) {
+            return expr2;
+        } else {
+            return expr3;
+        }
+    }
+
+And it follows the same rules of a switch statement mentioned above, except for rule 4, as an 'otherwise' branch is required in a switch expression to ensure all paths return a value. An example:
+
+    variable x integer = 12;
+    terminal switch(x) {
+        when 10 -> 20;
+        otherwise -> 50;
+    }; // prints 50
 
 #### Loops (while)
 
