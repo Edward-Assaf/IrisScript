@@ -1,6 +1,8 @@
 package irisscript.lexer;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -24,6 +26,8 @@ public final class IrisLexer {
 
     private List<Token> tokens;
 
+    private final Deque<Integer> interpolationBraceDepths = new ArrayDeque<>();
+
     public IrisLexer(DiagnosticsCollector diagnosticsCollector) {
         this.diagnosticsCollector = Objects.requireNonNull(diagnosticsCollector,
                 "diagnosticsCollector must not be null");
@@ -35,6 +39,7 @@ public final class IrisLexer {
         this.start = 0;
         this.current = 0;
         this.tokens = new ArrayList<>();
+        this.interpolationBraceDepths.clear();
         while (!isAtEnd()) {
             start = current;
             scanToken();
@@ -55,9 +60,25 @@ public final class IrisLexer {
                 addToken(TokenType.DELIMITER_RPAREN);
                 break;
             case '{':
+                if (!interpolationBraceDepths.isEmpty()) {
+                    interpolationBraceDepths.push(interpolationBraceDepths.pop() + 1);
+                }
                 addToken(TokenType.DELIMITER_LBRACE);
                 break;
             case '}':
+                if (!interpolationBraceDepths.isEmpty()) {
+                    int depth = interpolationBraceDepths.peek();
+                    if (depth > 0) {
+                        interpolationBraceDepths.pop();
+                        interpolationBraceDepths.push(depth - 1);
+                        addToken(TokenType.DELIMITER_RBRACE);
+                    } else {
+                        interpolationBraceDepths.pop();
+                        addToken(TokenType.DELIMITER_RBRACE);
+                        scanInterpolatedText();
+                    }
+                    break;
+                }
                 addToken(TokenType.DELIMITER_RBRACE);
                 break;
             case '[':
@@ -154,7 +175,11 @@ public final class IrisLexer {
                 scanText();
                 break;
             default:
-                if (isDigit(c)) {
+                if (c == 'i' && peek() == '"') {
+                    advance(); // Consume the '"'
+                    addToken(TokenType.INTERPOLATION_START);
+                    scanInterpolatedText();
+                } else if (isDigit(c)) {
                     scanNumber();
                 } else if (isAlpha(c)) {
                     scanIdentifierOrKeyword();
@@ -205,6 +230,62 @@ public final class IrisLexer {
         }
         advance(); // Consume the closing "
         addToken(TokenType.LITERAL_TEXT, value.toString());
+    }
+
+    private void scanInterpolatedText() {
+        StringBuilder value = new StringBuilder();
+        int textStart = current;
+        while (!isAtEnd()) {
+            char c = peek();
+            if (c == '"') {
+                if (current > textStart || value.length() > 0) {
+                    tokens.add(new Token(TokenType.INTERPOLATION_TEXT, contents.substring(textStart, current),
+                            value.toString(),
+                            sourceFile.getSpan(textStart, current)));
+                }
+                start = current;
+                advance(); // consume closing '"'
+                addToken(TokenType.INTERPOLATION_END);
+                return;
+            }
+            if (c == '$' && peekNext() == '{') {
+                if (current > textStart || value.length() > 0) {
+                    tokens.add(new Token(TokenType.INTERPOLATION_TEXT, contents.substring(textStart, current),
+                            value.toString(),
+                            sourceFile.getSpan(textStart, current)));
+                }
+                start = current;
+                advance(); // consume '$'
+                advance(); // consume '{'
+                addToken(TokenType.DELIMITER_DOLLAR_LBRACE);
+                interpolationBraceDepths.push(0);
+                return;
+            }
+            if (c == '\\') {
+                advance(); // consume '\\'
+                if (isAtEnd()) {
+                    break;
+                }
+                char escape = advance();
+                switch (escape) {
+                    case 'n' -> value.append('\n');
+                    case 't' -> value.append('\t');
+                    case 'r' -> value.append('\r');
+                    case '"' -> value.append('"');
+                    case '\\' -> value.append('\\');
+                    case '$' -> value.append('$');
+                    case '{' -> value.append('{');
+                    case '}' -> value.append('}');
+                    default -> {
+                        reportError("E0005", "Invalid escape sequence: '\\" + escape + "'", current - 2, current);
+                        value.append(escape);
+                    }
+                }
+            } else {
+                value.append(advance());
+            }
+        }
+        reportError("E0004", "Unterminated text literal", start, current);
     }
 
     private void scanNumber() {
@@ -335,6 +416,7 @@ public final class IrisLexer {
             Map.entry("terminal", TokenType.KEYWORD_TERMINAL),
             Map.entry("length", TokenType.KEYWORD_LENGTH),
             Map.entry("size", TokenType.KEYWORD_SIZE),
+            Map.entry("type", TokenType.KEYWORD_TYPE),
             Map.entry("switch", TokenType.KEYWORD_SWITCH),
             Map.entry("when", TokenType.KEYWORD_WHEN),
             Map.entry("otherwise", TokenType.KEYWORD_OTHERWISE));

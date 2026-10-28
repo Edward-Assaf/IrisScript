@@ -1,4 +1,4 @@
-# IrisScript Language (v1.2.1)
+# IrisScript Language (v1.2.2)
 
 IrisScript is a statically typed, structured programming language designed for clarity, safety, and seamless execution on the Java Virtual Machine. IrisScript compiles into Java source code, which is then compiled and executed using an installed Java Development Kit (JDK).
 
@@ -213,8 +213,9 @@ The following reserved words cannot be used as identifiers:
 
     boolean    break      constant   decimal    else
     elseif     false      function   global     if
-    integer    return     skip       terminal   text
-    true       variable   void       while
+    integer    length     otherwise  return     size
+    skip       switch     terminal   text       true
+    type       variable   void       when       while
 
 #### Comments
 
@@ -231,15 +232,24 @@ Multi-line comment:
        block comment.
     */
 
-#### String Escapes
+#### String Interpolation and Escapes
 
-Text literals are enclosed in double quotes. The following escape sequences are recognized:
+Text literals are enclosed in double quotes. Prefixing a text literal with `i` enables string interpolation:
+
+    variable name text = "Iris";
+    variable count integer = 5;
+    terminal i"Hello, ${name}! Count is ${count * 2}.\n";
+
+Inside `${...}`, any valid IrisScript expression can be evaluated and converted to text.
+
+The following escape sequences are recognized:
 
 - \n: Line feed (newline)
 - \t: Horizontal tab
 - \r: Carriage return
 - \": Double quote
 - \\: Backslash
+- \$: Dollar sign (prevents interpolation when followed by `{`)
 
 ---
 
@@ -254,6 +264,22 @@ IrisScript provides five built-in types:
 | text | java.lang.String | Immutable UTF-16 character sequence | "hello", "line\n" |
 | boolean | boolean | Logical truth values | true, false |
 | void | void | Absence of a return value | Allowed only on function return types |
+
+#### Type Inspection: `type(expr)`
+
+IrisScript provides a built-in `type(expr)` operator that returns the compile-time type of any expression as a `text` value:
+
+    variable x integer = 42;
+    variable nums integer[] = { 1, 2, 3 };
+
+    terminal type(x);          // "integer"
+    terminal type(nums);       // "integer[]"
+    terminal type(1.5);        // "decimal"
+    terminal type(x > 0);      // "boolean"
+    terminal type("hello");    // "text"
+    terminal type(type(x));    // "text"
+
+The returned text representation uses IrisScript's type nomenclature, with `[]` for each array dimension (e.g. `integer`, `decimal[]`, `integer[][]`). Because IrisScript is statically typed, `type(expr)` is evaluated at compile time.
 
 #### Numeric Conversion Semantics
 
@@ -410,15 +436,12 @@ The while loop continues executing as long as its condition remains true:
 
     while (i < 10) {
         i = i + 1;
-
         if (i == 5) {
             skip;
         }
-
         if (i == 8) {
             break;
         }
-
         terminal i;
         terminal "\n";
     }
@@ -485,6 +508,7 @@ IrisScript uses the dedicated keyword terminal for standard output:
 
 - The expression must not be void.
 - The transpiler maps terminal <expression>; to System.out.print(<expression>);.
+- While arrays are references, using `terminal <array-identifier>;` will print a text representation of the array's elements instead of the array reference, unlike Java.
 
 ---
 
@@ -598,6 +622,8 @@ The compiler features categorized error reporting.
 | E1020 | Error | Expected 'when' or 'otherwise' branch keyword. |
 | E1021 | Error | Expected arrow operator after switch branch. |
 | E1022 | Error | Missing 'otherwise' branch in switch expression. |
+| E1023 | Error | Expected text or expression in interpolated text. |
+| E1024 | Error | Unterminated interpolated text. |
 
 ### Semantic Diagnostics (E2xxx, W2xxx)
 
@@ -627,7 +653,7 @@ The compiler features categorized error reporting.
 | E2022 | Error | Unary plus or minus requires a numeric operand. |
 | E2023 | Error | Unary logical NOT requires a boolean operand. |
 | E2024 | Error | Not all execution paths return a value in a non-void function. |
-| E2025 | Error | Terminal statement requires a non-void expression. |
+| E2025 | Error | Statement requires a non-void expression. |
 | E2026 | Error | Cannot infer the type of an empty array literal. |
 | E2027 | Error | Array literal elements must have compatible types. |
 | E2028 | Error | Array size must be an integer expression. |

@@ -391,7 +391,20 @@ public final class JavaCodeGenerator {
             case TerminalStatement terminal -> {
                 emitIndent();
                 out.append("System.out.print(");
-                emitExpression(terminal.expression());
+                TypeInfo expressionType = semanticModel.expressionType(terminal.expression()).orElse(null);
+                if (expressionType != null && expressionType.isArray()) {
+                    if (expressionType.dimensions() > 1) {
+                        out.append("java.util.Arrays.deepToString(");
+                        emitExpression(terminal.expression());
+                        out.append(")");
+                    } else {
+                        out.append("java.util.Arrays.toString(");
+                        emitExpression(terminal.expression());
+                        out.append(")");
+                    }
+                } else {
+                    emitExpression(terminal.expression());
+                }
                 out.append(");\n");
             }
             case SwitchStatement switchStatement -> {
@@ -426,6 +439,7 @@ public final class JavaCodeGenerator {
             }
             case ErrorStatement ignored -> throw new IllegalStateException("Cannot generate Java from ErrorStatement");
         }
+
     }
 
     private void emitIfInline(IfStatement statement) {
@@ -632,6 +646,39 @@ public final class JavaCodeGenerator {
                 }
                 emitExpression(length.expression());
                 out.append(".length))");
+            }
+            case TypeExpression typeExpr -> {
+                TypeInfo targetType = semanticModel.expressionType(typeExpr.expression()).orElse(null);
+                if (targetType == null || targetType.equals(IrisSemanticAnalyzer.ERROR_TYPE)) {
+                    throw new IllegalStateException("Missing or invalid type for type() expression");
+                }
+                String typeString = formatType(targetType);
+                out.append('"').append(typeString).append('"');
+            }
+            case InterpolatedTextExpression interpolated -> {
+                if (interpolated.parts().isEmpty()) {
+                    out.append("\"\"");
+                    break;
+                }
+                out.append("(\"\"");
+                for (Expression part : interpolated.parts()) {
+                    out.append(" + ");
+                    TypeInfo partType = semanticModel.expressionType(part).orElse(null);
+                    if (partType != null && partType.isArray()) {
+                        if (partType.dimensions() > 1) {
+                            out.append("java.util.Arrays.deepToString(");
+                            emitExpression(part);
+                            out.append(")");
+                        } else {
+                            out.append("java.util.Arrays.toString(");
+                            emitExpression(part);
+                            out.append(")");
+                        }
+                    } else {
+                        emitExpression(part);
+                    }
+                }
+                out.append(')');
             }
             case TernaryExpression ternary -> {
                 out.append('(');
@@ -930,6 +977,14 @@ public final class JavaCodeGenerator {
             case BITWISE_AND -> "&";
             case BITWISE_OR -> "|";
         };
+    }
+
+    private String formatType(TypeInfo type) {
+        StringBuilder builder = new StringBuilder(type.type().name().toLowerCase());
+        for (int i = 0; i < type.dimensions(); i++) {
+            builder.append("[]");
+        }
+        return builder.toString();
     }
 
     private void emitLine(String line) {

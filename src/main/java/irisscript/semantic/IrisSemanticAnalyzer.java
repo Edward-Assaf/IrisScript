@@ -336,6 +336,9 @@ public final class IrisSemanticAnalyzer {
             case IndexExpression indexExpression -> analyzeIndexExpression(indexExpression, scope);
             case SizeExpression sizeExpression -> analyzeSizeExpression(sizeExpression, scope);
             case LengthExpression lengthExpression -> analyzeLengthExpression(lengthExpression, scope);
+            case TypeExpression typeExpression -> analyzeTypeExpression(typeExpression, scope);
+            case InterpolatedTextExpression interpolatedExpression ->
+                analyzeInterpolatedTextExpression(interpolatedExpression, scope);
             case TernaryExpression ternaryExpression -> analyzeTernaryExpression(ternaryExpression, scope);
             case SwitchExpression switchExpression -> analyzeSwitchExpression(switchExpression, scope);
             case ErrorExpression errorExpression -> analyzeErrorExpression(errorExpression);
@@ -634,6 +637,24 @@ public final class IrisSemanticAnalyzer {
         }
         reportError("E2037", "Length operator requires an array or text operand", lengthExpression.expression().span());
         return ERROR_TYPE;
+    }
+
+    private TypeInfo analyzeTypeExpression(TypeExpression typeExpression, Scope scope) {
+        TypeInfo targetType = analyzeExpression(typeExpression.expression(), scope);
+        if (targetType.equals(ERROR_TYPE)) {
+            return ERROR_TYPE;
+        }
+        return TEXT_TYPE;
+    }
+
+    private TypeInfo analyzeInterpolatedTextExpression(InterpolatedTextExpression expr, Scope scope) {
+        for (Expression part : expr.parts()) {
+            TypeInfo partType = analyzeExpression(part, scope);
+            if (partType.equals(VOID_TYPE)) {
+                reportError("E2025", "Interpolated expression cannot be void", part.span());
+            }
+        }
+        return TEXT_TYPE;
     }
 
     private TypeInfo analyzeTernaryExpression(TernaryExpression ternaryExpression, Scope scope) {

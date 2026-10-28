@@ -547,6 +547,42 @@ public final class IrisParser {
             Token rparen = consume(TokenType.DELIMITER_RPAREN, "E1003", "Expected ')' after expression");
             return new LengthExpression(expression, spanFrom(lengthToken, rparen));
         }
+        if (tokens.match(TokenType.KEYWORD_TYPE)) {
+            Token typeToken = tokens.previous();
+            consume(TokenType.DELIMITER_LPAREN, "E1008", "Expected '(' after 'type'");
+            Expression expression = parseExpression();
+            Token rparen = consume(TokenType.DELIMITER_RPAREN, "E1003", "Expected ')' after expression");
+            return new TypeExpression(expression, spanFrom(typeToken, rparen));
+        }
+        if (tokens.match(TokenType.INTERPOLATION_START)) {
+            Token startToken = tokens.previous();
+            List<Expression> parts = new ArrayList<>();
+            while (!tokens.check(TokenType.INTERPOLATION_END) && !tokens.isAtEnd()) {
+                if (tokens.match(TokenType.INTERPOLATION_TEXT)) {
+                    Token textToken = tokens.previous();
+                    parts.add(new LiteralExpression(textToken.literal(), textToken.span()));
+                } else if (tokens.match(TokenType.DELIMITER_DOLLAR_LBRACE)) {
+                    Token lbrace = tokens.previous();
+                    if (tokens.match(TokenType.DELIMITER_RBRACE)) {
+                        parts.add(new LiteralExpression("", spanFrom(lbrace, tokens.previous())));
+                    } else {
+                        Expression expr = parseExpression();
+                        consume(TokenType.DELIMITER_RBRACE, "E1006",
+                                "Expected '}' after expression in interpolated text");
+                        parts.add(expr);
+                    }
+                } else {
+                    Token current = tokens.peek();
+                    reportError("E1023",
+                            "Expected text or expression in interpolated text, found '" + current.lexeme() + "'",
+                            current.span());
+                    tokens.consume();
+                    throw new ParseException();
+                }
+            }
+            Token endToken = consume(TokenType.INTERPOLATION_END, "E1024", "Unterminated interpolated text");
+            return new InterpolatedTextExpression(parts, spanFrom(startToken, endToken));
+        }
         if (tokens.match(TokenType.IDENTIFIER)) {
             Token idToken = tokens.previous();
             return new IdentifierExpression(idToken.lexeme(), idToken.span());
