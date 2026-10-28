@@ -232,9 +232,9 @@ Multi-line comment:
        block comment.
     */
 
-#### String Interpolation and Escapes
+#### Text Interpolation and Escapes
 
-Text literals are enclosed in double quotes. Prefixing a text literal with `i` enables string interpolation:
+Text literals are enclosed in double quotes. Prefixing a text literal with `i` enables text interpolation:
 
     variable name text = "Iris";
     variable count integer = 5;
@@ -936,7 +936,7 @@ IrisScript includes a VS Code extension located in the repository's VS Code exte
 
 ### Features
 
-- Syntax highlighting for IrisScript keywords, types, operators, strings, numbers, and comments.
+- Syntax highlighting for IrisScript keywords, types, operators, texts, numbers, and comments.
 - Run and Compile buttons in the editor title bar for .iris files.
 - Real-time diagnostics displayed through editor squiggles and the Problems panel.
 - Compiler integration through the IrisScript CLI.
