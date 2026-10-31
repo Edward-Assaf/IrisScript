@@ -1,4 +1,4 @@
-# IrisScript Language (v1.2.2)
+# IrisScript Language (v1.2.3)
 
 IrisScript is a statically typed, structured programming language designed for clarity, safety, and seamless execution on the Java Virtual Machine. IrisScript compiles into Java source code, which is then compiled and executed using an installed Java Development Kit (JDK).
 
@@ -308,6 +308,25 @@ Constants cannot be reassigned once initialized. An initializer is mandatory:
     constant MAX_RETRIES integer = 5;
 
 Reassigning MAX_RETRIES produces error E2012.
+
+#### Multi-Variable Declarations
+
+Multiple variables or constants sharing the same type can be declared in a single statement using a comma-separated list of identifiers:
+
+    variable x, y integer = 12, 15;
+    constant a, b, c text = "alpha", "beta", "gamma";
+
+General syntax:
+
+    [global] variable v1, v2, ..., vn <type> [= expr1, expr2, ..., exprn];
+    [global] constant c1, c2, ..., cn <type> = expr1, expr2, ..., exprn;
+
+Rules:
+1. All identifiers declared within the statement share the specified <type>.
+2. When initializing with =, the number of initializer expressions must match the number of declared identifiers (otherwise error E1025 is raised).
+3. Mutable variables may be declared without initializers:
+       variable i, j, k integer;
+4. Constants must each have an initializer expression.
 
 ---
 
@@ -624,6 +643,7 @@ The compiler features categorized error reporting.
 | E1022 | Error | Missing 'otherwise' branch in switch expression. |
 | E1023 | Error | Expected text or expression in interpolated text. |
 | E1024 | Error | Unterminated interpolated text. |
+| E1025 | Error | Number of initializers does not match number of variables. |
 
 ### Semantic Diagnostics (E2xxx, W2xxx)
 

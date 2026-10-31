@@ -46,7 +46,7 @@ public final class IrisParser {
                         declarations.add(parseFunctionDeclaration(true, globalToken));
                     } else if (tokens.match(TokenType.KEYWORD_VARIABLE, TokenType.KEYWORD_CONSTANT)) {
                         boolean isConstant = tokens.previous().type() == TokenType.KEYWORD_CONSTANT;
-                        statements.add(parseVariableOrConstantDeclaration(tokens.previous(), isConstant, true,
+                        statements.addAll(parseVariableOrConstantDeclaration(tokens.previous(), isConstant, true,
                                 globalToken));
                     } else {
                         reportError("E1012", "Expected function or variable declaration after 'global'",
@@ -56,7 +56,7 @@ public final class IrisParser {
                 } else if (this.tokens.check(TokenType.KEYWORD_FUNCTION)) {
                     declarations.add(parseFunctionDeclaration(false, this.tokens.peek()));
                 } else {
-                    statements.add(parseStatement());
+                    statements.addAll(parseStatement());
                 }
             } catch (ParseException e) {
                 SourceSpan errorSpan = spanFrom(startToken, lastConsumedOr(startToken, startIndex));
@@ -110,7 +110,7 @@ public final class IrisParser {
     // Statements
     // ==========================================
 
-    private Statement parseStatement() {
+    private List<Statement> parseStatement() {
         if (tokens.match(TokenType.KEYWORD_GLOBAL)) {
             Token globalToken = tokens.previous();
             reportError("E1013", "'global' declarations are only allowed at the top level", globalToken.span());
@@ -123,45 +123,66 @@ public final class IrisParser {
             return parseVariableOrConstantDeclaration(tokens.previous(), true, false, tokens.previous());
         }
         if (tokens.check(TokenType.KEYWORD_IF)) {
-            return parseIfStatement();
+            return List.of(parseIfStatement());
         }
         if (tokens.check(TokenType.KEYWORD_WHILE)) {
-            return parseWhileStatement();
+            return List.of(parseWhileStatement());
         }
         if (tokens.check(TokenType.KEYWORD_SWITCH)) {
-            return parseSwitchStatement();
+            return List.of(parseSwitchStatement());
         }
         if (tokens.match(TokenType.KEYWORD_RETURN)) {
-            return parseReturnStatement(tokens.previous());
+            return List.of(parseReturnStatement(tokens.previous()));
         }
         if (tokens.match(TokenType.KEYWORD_BREAK)) {
-            return parseBreakStatement(tokens.previous());
+            return List.of(parseBreakStatement(tokens.previous()));
         }
         if (tokens.match(TokenType.KEYWORD_SKIP)) {
-            return parseSkipStatement(tokens.previous());
+            return List.of(parseSkipStatement(tokens.previous()));
         }
         if (tokens.match(TokenType.KEYWORD_TERMINAL)) {
-            return parseTerminalStatement(tokens.previous());
+            return List.of(parseTerminalStatement(tokens.previous()));
         }
         if (tokens.check(TokenType.DELIMITER_LBRACE)) {
-            return parseBlockStatement();
+            return List.of(parseBlockStatement());
         }
-        return parseExpressionStatement();
+        return List.of(parseExpressionStatement());
     }
 
-    private VariableDeclarationStatement parseVariableOrConstantDeclaration(Token keywordToken, boolean isConstant,
+    private List<Statement> parseVariableOrConstantDeclaration(Token keywordToken, boolean isConstant,
             boolean isGlobal, Token declarationStart) {
-        Token nameToken = consume(TokenType.IDENTIFIER, "E1009", "Expected variable name");
+        List<Token> nameTokens = new ArrayList<>();
+        nameTokens.add(consume(TokenType.IDENTIFIER, "E1009", "Expected variable name"));
+        while (tokens.match(TokenType.DELIMITER_COMMA)) {
+            nameTokens.add(consume(TokenType.IDENTIFIER, "E1009", "Expected variable name after ','"));
+        }
         TypeNode type = parseType();
-        Expression initializer = null;
+        List<Expression> initializers = new ArrayList<>();
         if (tokens.match(TokenType.OPERATOR_ONE_EQ)) {
-            initializer = parseExpression();
+            initializers.add(parseExpression());
+            while (tokens.match(TokenType.DELIMITER_COMMA)) {
+                initializers.add(parseExpression());
+            }
+            if (initializers.size() != nameTokens.size()) {
+                reportError("E1025", "Number of initializers (" + initializers.size()
+                        + ") does not match number of variables (" + nameTokens.size() + ")",
+                        tokens.previous().span());
+                throw new ParseException();
+            }
         } else if (isConstant) {
-            reportError("E1010", "Constant '" + nameToken.lexeme() + "' must be initialized", nameToken.span());
+            for (Token name : nameTokens) {
+                reportError("E1010", "Constant '" + name.lexeme() + "' must be initialized", name.span());
+            }
         }
         Token semicolon = consume(TokenType.DELIMITER_SEMICOLON, "E1005", "Expected ';' after variable declaration");
         SourceSpan span = SourceSpan.covering(declarationStart.span(), semicolon.span());
-        return new VariableDeclarationStatement(nameToken.lexeme(), type, initializer, isConstant, span, isGlobal);
+        List<Statement> result = new ArrayList<>();
+        for (int i = 0; i < nameTokens.size(); i++) {
+            Expression initializer = initializers.isEmpty() ? null : initializers.get(i);
+            result.add(new VariableDeclarationStatement(nameTokens.get(i).lexeme(), type, initializer, isConstant, span,
+                    isGlobal));
+        }
+        return result;
     }
 
     private IfStatement parseIfStatement() {
@@ -275,7 +296,7 @@ public final class IrisParser {
             int startIndex = tokens.getPosition();
             Token startToken = tokens.peek();
             try {
-                statements.add(parseStatement());
+                statements.addAll(parseStatement());
             } catch (ParseException e) {
                 SourceSpan errorSpan = spanFrom(startToken, lastConsumedOr(startToken, startIndex));
                 statements.add(new ErrorStatement(errorSpan));
