@@ -341,6 +341,7 @@ public final class IrisSemanticAnalyzer {
                 analyzeInterpolatedTextExpression(interpolatedExpression, scope);
             case TernaryExpression ternaryExpression -> analyzeTernaryExpression(ternaryExpression, scope);
             case SwitchExpression switchExpression -> analyzeSwitchExpression(switchExpression, scope);
+            case TypecastExpression typecastExpression -> analyzeTypecastExpression(typecastExpression, scope);
             case ErrorExpression errorExpression -> analyzeErrorExpression(errorExpression);
         };
         semanticModel.bindExpressionType(expression, result);
@@ -725,6 +726,21 @@ public final class IrisSemanticAnalyzer {
         return branchReturnType;
     }
 
+    private TypeInfo analyzeTypecastExpression(TypecastExpression typecastExpression, Scope scope) {
+        TypeInfo expressionType = analyzeExpression(typecastExpression.castedExpression(), scope);
+        TypeInfo castType = resolveType(typecastExpression.type(), false);
+        if (expressionType.equals(ERROR_TYPE) || castType.equals(ERROR_TYPE)) {
+            return ERROR_TYPE;
+        }
+        if (!castable(expressionType, castType)) {
+            SourceSpan span = SourceSpan.covering(typecastExpression.castedExpression().span(),
+                    typecastExpression.type().span());
+            reportError("E2043", typeName(expressionType) + " cannot be type-casted to " + typeName(castType), span);
+            return ERROR_TYPE;
+        }
+        return castType;
+    }
+
     private TypeInfo analyzeErrorExpression(ErrorExpression errorExpression) {
         return ERROR_TYPE;
     }
@@ -732,6 +748,25 @@ public final class IrisSemanticAnalyzer {
     // ==========================================
     // Helpers
     // ==========================================
+
+    private boolean castable(TypeInfo from, TypeInfo to) {
+        if (from.equals(to)) {
+            return true;
+        }
+        if (from.isArray() || to.isArray()) {
+            return false;
+        }
+        if (isNumeric(from) && isNumeric(to)) {
+            return true;
+        }
+        if (from.equals(BOOLEAN_TYPE) || to.equals(BOOLEAN_TYPE)) {
+            return false;
+        }
+        if (from.equals(TEXT_TYPE)) {
+            return false;
+        }
+        return true;
+    }
 
     private void analyzeSwitchTargetAndUniqueness(Expression switchTarget, List<Expression> caseValues, Scope scope) {
         TypeInfo targetType = analyzeExpression(switchTarget, scope);

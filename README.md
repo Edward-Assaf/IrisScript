@@ -1,4 +1,4 @@
-# IrisScript Language (v1.2.3)
+# IrisScript Language (v1.2.4)
 
 IrisScript is a statically typed, structured programming language designed for clarity, safety, and seamless execution on the Java Virtual Machine. IrisScript compiles into Java source code, which is then compiled and executed using an installed Java Development Kit (JDK).
 
@@ -285,6 +285,28 @@ The returned text representation uses IrisScript's type nomenclature, with `[]` 
 
 - Widening (Implicit): An integer value can be implicitly widened to decimal in assignments and arithmetic expressions.
 - Narrowing (Warning): Assigning a decimal to an integer emits warning W2001, indicating potential loss of precision.
+
+#### Type-Casting: `typecast(expr, type)`
+
+IrisScript provides a built-in `typecast(expr, type)` operator that casts an expression according to a provided type name. This operator can be used to cast expressions from and to integer, decimal and text types, while arrays and booleans are not castable types.
+
+Using `typecast` for numeric conversions has the same functionality detailed in the previous section, but a warning will not be emitted for the narrowing conversion in this case, because explicitness in numeric conversions (using `typecast`) is interpreted as user-aware, intentional behvaior.
+
+Using `typecast` to cast a numeric expression (integer or decimal) to text type returns a text representation of the numeric expression equivalent to Java's `String.valueOf(expr)`.
+
+    variable x decimal = 15.6;
+
+    variable y integer = typecast(x, integer); 
+    terminal y; // 15, no warning for precision loss
+
+    variable z text = typecast(x, text);
+    terminal z; // "15.6"
+
+The following are the rules for type-casting to be valid:
+1. An array expression or boolean expression cannot be casted, unless it is being casted to the same type (e.g. boolean to boolean, integer[] to integer[]... etc).
+2. A text expression currently cannot be casted to numeric types, even if the underlying text literal represents a numeric value.
+3. Numeric conversions (decimal to integer, integer to decimal) are valid. However, a  precision-loss warning is not emitted for the narrowing conversion (decimal to integer).
+4. Numeric expressions (decimal, integer) can be casted to text type, resulting in a text representation of the numeric expression.
 
 #### Text Equality Semantics
 
@@ -644,6 +666,7 @@ The compiler features categorized error reporting.
 | E1023 | Error | Expected text or expression in interpolated text. |
 | E1024 | Error | Unterminated interpolated text. |
 | E1025 | Error | Number of initializers does not match number of variables. |
+| E1026 | Error | Expected comma. |
 
 ### Semantic Diagnostics (E2xxx, W2xxx)
 
@@ -691,6 +714,7 @@ The compiler features categorized error reporting.
 | E2040 | Error | Only literal expressions are allowed in switch's 'when' branches. |
 | E2041 | Error | Only unique 'when' branch expressions are allowed in switch. |
 | E2042 | Error | All branches of a switch expression must return the same type. |
+| E2043 | Error | Invalid operands for type-cast expression. |
 | W2001 | Warning | Potential loss of precision converting decimal to integer. |
 
 ### Build and Execution Diagnostics (E3xxx)

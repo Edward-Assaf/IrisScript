@@ -745,6 +745,20 @@ public final class JavaCodeGenerator {
                     emitJavaNumericBoxedCastToUnboxed(returnType);
                 }
             }
+            case TypecastExpression typecastExpression -> {
+                TypeInfo castType = toTypeInfo(typecastExpression.type());
+                if (castType.equals(IrisSemanticAnalyzer.TEXT_TYPE)) {
+                    out.append("String.valueOf(");
+                    emitExpression(typecastExpression.castedExpression());
+                    out.append(")");
+                    break;
+                }
+                out.append("((");
+                emitJavaElementTypeAndDimensions(castType);
+                out.append(") (");
+                emitExpression(typecastExpression.castedExpression());
+                out.append("))");
+            }
             case ErrorExpression ignored ->
                 throw new IllegalStateException("Cannot generate Java from ErrorExpression");
         }

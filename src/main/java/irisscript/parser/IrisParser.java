@@ -575,6 +575,15 @@ public final class IrisParser {
             Token rparen = consume(TokenType.DELIMITER_RPAREN, "E1003", "Expected ')' after expression");
             return new TypeExpression(expression, spanFrom(typeToken, rparen));
         }
+        if (tokens.match(TokenType.KEYWORD_TYPECAST)) {
+            Token castToken = tokens.previous();
+            consume(TokenType.DELIMITER_LPAREN, "E1008", "Expected '(' after 'typecast'");
+            Expression expression = parseExpression();
+            consume(TokenType.DELIMITER_COMMA, "E1026", "Expected ',' after typecast expression");
+            TypeNode type = parseType();
+            Token rparen = consume(TokenType.DELIMITER_RPAREN, "E1003", "Expected ')' after type name");
+            return new TypecastExpression(type, expression, spanFrom(castToken, rparen));
+        }
         if (tokens.match(TokenType.INTERPOLATION_START)) {
             Token startToken = tokens.previous();
             List<Expression> parts = new ArrayList<>();
