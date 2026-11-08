@@ -1038,15 +1038,15 @@ Note that the `length` keyword can be used with text as well.
 
 ---
 
-### 6. For Loop, Array Iteration, and Type-Casting
+### 6. For Loop
 
-This example populates an integer array and prints all its elements on a single line using a `for` loop, `length`, and `typecast`.
+This example populates an integer array and prints all its elements on a single line using a `for` loop.
 
     variable nums integer[] = {10, 25, 3, 47, 8};
     variable line text = "";
 
     for (variable i integer = 0; i < length(nums); i++) {
-        line = line + typecast(nums[i], text) + " ";
+        line += i"${nums[i]} ";
     }
 
     terminal line;
