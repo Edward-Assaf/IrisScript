@@ -545,6 +545,13 @@ public final class JavaCodeGenerator {
                 }
             }
             case AssignmentExpression assignment -> {
+                if (assignment.target() instanceof IndexExpression indexExpression) {
+                    TypeInfo indexTargetType = semanticModel.expressionType(indexExpression.target()).orElse(null);
+                    if (indexTargetType.equals(IrisSemanticAnalyzer.TEXT_TYPE)) {
+                        emitTextIndexAssignment(assignment);
+                        break;
+                    }
+                }
                 emitExpression(assignment.target());
                 out.append(switch (assignment.operator()) {
                     case ASSIGN -> " = ";
@@ -860,6 +867,20 @@ public final class JavaCodeGenerator {
         emitExpression(target);
         out.append(";\n");
         return internalVariableName;
+    }
+
+    private void emitTextIndexAssignment(AssignmentExpression assignment) {
+        IndexExpression leftPart = (IndexExpression) assignment.target();
+        emitExpression(leftPart.target());
+        out.append(" = new StringBuilder(");
+        emitExpression(leftPart.target());
+        out.append(").replace((int) (");
+        emitExpression(leftPart.index());
+        out.append("), ((int) (");
+        emitExpression(leftPart.index());
+        out.append(")) + 1, ");
+        emitExpression(assignment.value());
+        out.append(").toString()");
     }
 
     private void emitJavaElementTypeAndDimensionsBoxed(TypeInfo type) {

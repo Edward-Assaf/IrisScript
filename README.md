@@ -877,6 +877,7 @@ The compiler features categorized error reporting.
 | E2042 | Error | All branches of a `switch` expression must return the same type. |
 | E2043 | Error | Invalid operands for `typecast` expression. |
 | E2044 | Error | Only iterable expressions can be used in a `foreach` loop. |
+| E2045 | Error | Assignment expression's target is an index expression with an invalid target type. |
 | W2001 | Warning | Potential loss of precision converting decimal to integer. |
 
 ### Build and Execution Diagnostics (E3xxx)

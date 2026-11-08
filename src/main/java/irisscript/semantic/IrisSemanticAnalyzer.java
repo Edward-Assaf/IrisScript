@@ -434,6 +434,18 @@ public final class IrisSemanticAnalyzer {
                 }
             }
             TypeInfo indexType = analyzeExpression(indexExpression, scope);
+            TypeInfo indexTargetType = semanticModel.expressionType(indexExpression.target()).orElse(ERROR_TYPE);
+            if (indexType.equals(TEXT_TYPE) && indexTargetType.equals(TEXT_TYPE)) {
+                boolean isOkay = (indexExpression.target() instanceof IdentifierExpression)
+                        || ((indexExpression.target() instanceof IndexExpression higherIndex) && (semanticModel
+                                .expressionType(higherIndex.target()).orElse(ERROR_TYPE).dimensions() > 0));
+                if (!isOkay) {
+                    reportError("E2045",
+                            "Assignment expression's target is an index expression 'expr[i]' where 'expr' is of type text, and that is only legal when 'expr' is an identifier or an index expression whose target is an array",
+                            indexExpression.span());
+                    return ERROR_TYPE;
+                }
+            }
             if (indexType.equals(ERROR_TYPE)) {
                 return ERROR_TYPE;
             }
