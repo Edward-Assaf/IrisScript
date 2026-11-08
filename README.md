@@ -503,20 +503,20 @@ The `for` loop provides structured iteration over ranges and sequences with thre
 ##### 1. Initializations (`ForInit`)
 The initialization clause executes once before the loop begins. It supports:
 - **Variable or Constant Declarations:** Declaring one or more loop-scoped variables or constants sharing the same type:
-
+```
     for (variable i integer = 0; i < 10; i = i + 1) { ... }
     for (variable i, j integer = 0, 10; i < j; i = i + 1, j = j - 1) { ... }
-
+```
 Variables declared here are scoped exclusively to the loop header and body.
 
 - **Comma-Separated Expressions:** Reusing existing variables or executing side-effects:
-
+```
     for (i = 0, j = 100; i < j; i = i + 1) { ... }
-
+```
 - **Empty:** Omitting initialization altogether:
-
+```
     for (; i < 10; i = i + 1) { ... }
-
+```
 ##### 2. Condition (`Condition`)
 Evaluated *before* every iteration:
 - Must evaluate strictly to a `boolean` expression.
@@ -526,9 +526,9 @@ Evaluated *before* every iteration:
 Executes at the end of each iteration, *and immediately whenever `skip;` is encountered*:
 
 - Accepts a comma-separated list of side-effect expressions (assignments, increments/decrements, calls):
-
+```
     for (variable i integer = 0; i < 10; i = i + 1, counter = counter + 2) { ... }
-
+```
 - Can be omitted if step updates are handled within the loop body.
 
 #### The `foreach` Loop
@@ -575,22 +575,22 @@ In this example, number is automatically inferred to be of type integer, since n
 The foreach loop supports both mutable and immutable iteration variables.
 
 - Mutable variable:
-
+```
     variable numbers integer[] = {1, 2, 3};
 
     foreach (variable number : numbers) {
         number = number * 2;
         terminal number;
     }
-
+```
 - Immutable variable:
-
+```
     variable numbers integer[] = {1, 2, 3};
 
     foreach (constant number : numbers) {
         terminal number;
     }
-
+```
 When declared using constant, the loop variable cannot be reassigned within the loop body.
 
 ##### Iterating Over Text
