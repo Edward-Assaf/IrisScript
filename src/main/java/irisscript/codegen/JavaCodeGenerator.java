@@ -397,6 +397,7 @@ public final class JavaCodeGenerator {
                 out.append('\n');
             }
             case ForStatement loop -> emitForStatement(loop);
+            case ForEachStatement foreach -> emitForEachStatement(foreach);
             case BreakStatement ignored -> emitLine("break;");
             case SkipStatement ignored -> emitLine("continue;");
             case TerminalStatement terminal -> {
@@ -792,6 +793,32 @@ public final class JavaCodeGenerator {
         }
         out.append(") ");
         emitBlockInline(loop.body());
+        out.append('\n');
+    }
+
+    private void emitForEachStatement(ForEachStatement foreach) {
+        TypeInfo iterableType = semanticModel.expressionType(foreach.iterable()).orElse(null);
+        boolean iterableIsText = iterableType != null && iterableType.equals(IrisSemanticAnalyzer.TEXT_TYPE);
+        VariableDeclarationStatement variable = foreach.variable();
+        String javaVarName = getDeclarationName(variable, variable.name());
+        emitIndent();
+        out.append("for (");
+        if (iterableIsText) {
+            // Text iteration: each element is a single-character String.
+            // We split the String into its individual characters represented as Strings.
+            // "abc".split("", -1) → ["a", "b", "c"] in Java 8+
+            out.append("String ").append(javaVarName).append(" : ");
+            emitExpression(foreach.iterable());
+            out.append(".split(\"\", -1)");
+        } else {
+            // Array iteration: use Java's enhanced for-loop directly.
+            // The element type is the array's element type (e.g. long for integer[]).
+            TypeInfo elementType = (iterableType != null) ? iterableType.elementType() : null;
+            out.append(typeMapper.map(elementType)).append(' ').append(javaVarName).append(" : ");
+            emitExpression(foreach.iterable());
+        }
+        out.append(") ");
+        emitBlockInline(foreach.body());
         out.append('\n');
     }
 

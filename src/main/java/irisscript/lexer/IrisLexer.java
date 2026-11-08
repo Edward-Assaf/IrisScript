@@ -421,6 +421,7 @@ public final class IrisLexer {
             Map.entry("when", TokenType.KEYWORD_WHEN),
             Map.entry("otherwise", TokenType.KEYWORD_OTHERWISE),
             Map.entry("typecast", TokenType.KEYWORD_TYPECAST),
-            Map.entry("for", TokenType.KEYWORD_FOR));
+            Map.entry("for", TokenType.KEYWORD_FOR),
+            Map.entry("foreach", TokenType.KEYWORD_FOREACH));
 
 }

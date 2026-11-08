@@ -131,6 +131,9 @@ public final class IrisParser {
         if (tokens.check(TokenType.KEYWORD_FOR)) {
             return List.of(parseForStatement());
         }
+        if (tokens.check(TokenType.KEYWORD_FOREACH)) {
+            return List.of(parseForeachStatement());
+        }
         if (tokens.check(TokenType.KEYWORD_SWITCH)) {
             return List.of(parseSwitchStatement());
         }
@@ -268,6 +271,26 @@ public final class IrisParser {
         BlockStatement body = parseBlockStatement();
         SourceSpan span = SourceSpan.covering(forKeyword.span(), body.span());
         return new ForStatement(initializations, condition, updates, body, span);
+    }
+
+    private ForEachStatement parseForeachStatement() {
+        Token foreachKeyword = tokens.consume(); // 'foreach'
+        consume(TokenType.DELIMITER_LPAREN, "E1008", "Expected '(' after 'foreach'");
+        if (!tokens.match(TokenType.KEYWORD_VARIABLE, TokenType.KEYWORD_CONSTANT)) {
+            reportError("E1011", "Expected 'variable' or 'constant' keyword", tokens.peek().span());
+            throw new ParseException();
+        }
+        Token variableStart = tokens.previous();
+        boolean isConstant = (variableStart.type() == TokenType.KEYWORD_CONSTANT);
+        Token variableName = consume(TokenType.IDENTIFIER, "E1009", "Expected variable name");
+        consume(TokenType.DELIMITER_COLON, "E1028", "Expected ':' after variable declaration in 'foreach'");
+        Expression iterable = parseExpression();
+        consume(TokenType.DELIMITER_RPAREN, "E1003", "Expected ')' after 'foreach' iterable");
+        BlockStatement body = parseBlockStatement();
+        VariableDeclarationStatement variable = new VariableDeclarationStatement(variableName.lexeme(), null, null,
+                isConstant, spanFrom(variableStart, variableName), false);
+        SourceSpan span = SourceSpan.covering(foreachKeyword.span(), body.span());
+        return new ForEachStatement(variable, iterable, body, span);
     }
 
     private SwitchStatement parseSwitchStatement() {

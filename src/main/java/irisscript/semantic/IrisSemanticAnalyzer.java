@@ -184,6 +184,7 @@ public final class IrisSemanticAnalyzer {
                 analyzeVariableStatement(variableStatement, scope, unitScope);
             case WhileStatement whileStatement -> analyzeWhileStatement(whileStatement, scope, unitScope);
             case ForStatement forStatement -> analyzeForStatement(forStatement, scope, unitScope);
+            case ForEachStatement foreachStatement -> analyzeForeachStatement(foreachStatement, scope, unitScope);
             case TerminalStatement terminalStatement -> analyzeTerminalStatement(terminalStatement, scope);
             case SwitchStatement switchStatement -> analyzeSwitchStatement(switchStatement, scope, unitScope);
             case ErrorStatement errorStatement -> analyzeErrorStatement(errorStatement);
@@ -305,6 +306,37 @@ public final class IrisSemanticAnalyzer {
         try {
             loopDepth++;
             analyzeBlockStatement(forStatement.body(), forScope, unitScope);
+        } finally {
+            loopDepth--;
+        }
+    }
+
+    private void analyzeForeachStatement(ForEachStatement foreachStatement, Scope scope, Scope unitScope) {
+        Scope foreachScope = new Scope(scope);
+        TypeInfo iterableType = analyzeExpression(foreachStatement.iterable(), foreachScope);
+        if (!iterable(iterableType) && !iterableType.equals(ERROR_TYPE)) {
+            reportError("E2044", "Only iterable expressions can be used in a 'foreach' loop",
+                    foreachStatement.iterable().span());
+        }
+        VariableDeclarationStatement variableStatement = foreachStatement.variable();
+        TypeInfo elementType;
+        if (iterableType.equals(TEXT_TYPE)) {
+            elementType = TEXT_TYPE;
+        } else if (iterableType.isArray()) {
+            elementType = iterableType.elementType();
+        } else {
+            elementType = ERROR_TYPE;
+        }
+        Symbol variableSymbol = new Symbol(variableStatement.name(), SymbolKind.VARIABLE, elementType,
+                variableStatement.isConstant(), List.of(), variableStatement.span(), variableStatement,
+                currentUnit);
+        semanticModel.bindOwner(variableStatement, currentUnit);
+        if (!foreachScope.define(variableSymbol)) {
+            reportDuplicateSymbol(variableStatement.name(), variableStatement.span(), foreachScope);
+        }
+        try {
+            loopDepth++;
+            analyzeBlockStatement(foreachStatement.body(), foreachScope, unitScope);
         } finally {
             loopDepth--;
         }
@@ -775,6 +807,10 @@ public final class IrisSemanticAnalyzer {
     // ==========================================
     // Helpers
     // ==========================================
+
+    private boolean iterable(TypeInfo type) {
+        return type.isArray() || type.equals(TEXT_TYPE);
+    }
 
     private boolean castable(TypeInfo from, TypeInfo to) {
         if (from.equals(to)) {

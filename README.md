@@ -1,4 +1,4 @@
-# IrisScript Language (v1.3)
+# IrisScript Language (v1.3.1)
 
 IrisScript is a statically typed, structured programming language designed for clarity, safety, and seamless execution on the Java Virtual Machine. IrisScript compiles into Java source code, which is then compiled and executed using an installed Java Development Kit (JDK).
 
@@ -21,7 +21,7 @@ This repository contains the language specification, compiler pipeline, diagnost
   - [Variables and Constants](#variables-and-constants)
   - [Operators and Expression Precedence](#operators-and-expression-precedence)
   - [Control Flow Statements](#control-flow-statements)
-  - [Loops (while, for)](#loops-while-for)
+  - [Loops (while, for, foreach)](#loops-while-for-foreach)
   - [Arrays](#arrays)
   - [Console Output: The Terminal Statement](#console-output-the-terminal-statement)
   - [Functions and Signatures](#functions-and-signatures)
@@ -470,9 +470,9 @@ And it follows the same rules of a switch statement mentioned above, except for 
         otherwise -> 50;
     }; // prints 50
 
-### Loops (while, for)
+### Loops (while, for, foreach)
 
-IrisScript provides both `while` loops and C/Java-style `for` loops for structured repetition. Braces are strictly mandatory for all loop bodies.
+IrisScript provides both `while` loops and C/Java-style `for` loops for structured repetition, as well as modern range-based `for` loops via the `foreach` loop construct. Braces are strictly mandatory for all loop bodies.
 
 #### The `while` Loop
 
@@ -521,6 +521,93 @@ Executes at the end of each iteration, *and immediately whenever `skip;` is enco
 - Accepts a comma-separated list of side-effect expressions (assignments, increments/decrements, calls):
       for (variable i integer = 0; i < 10; i = i + 1, counter = counter + 2) { ... }
 - Can be omitted if step updates are handled within the loop body.
+
+#### The `foreach` Loop
+
+The foreach loop provides a convenient way to iterate over the elements of an iterable expression without manually managing an index or iteration counter. Unlike traditional for loops, foreach automatically retrieves each element from the iterable and assigns it to a loop variable.
+
+##### Syntax
+    foreach ([variable | constant] name : expression) {
+        // Statements
+    }
+
+##### Components
+
+- `foreach`: Keyword that initiates the iteration.
+- `variable | constant`: Determines whether the loop variable is mutable or immutable.
+- `name`: Identifier of the loop variable. Its type is inferred automatically from the iterable’s element type.
+- `expression`: An expression that evaluates to a supported iterable value.
+
+##### Supported Iterable Types
+
+Currently, foreach supports the following iterable types:
+
+| Iterable | Iterated Elements |
+|—|—|
+| Text | Individual characters |
+| Array | Individual array elements |
+
+The expression must evaluate to one of these supported types. Other types are not currently iterable.
+
+##### Type Inference
+
+The loop variable does not require an explicit type declaration. Its type is automatically inferred from the type of the elements contained in the iterable expression. For example:
+
+    variable numbers integer[] = {10, 20, 30};
+
+    foreach (variable number : numbers) {
+        terminal number;
+    }
+
+In this example, number is automatically inferred to be of type integer, since numbers is an array of integers. The same principle applies to other array element types and text expressions.
+
+##### Variable Mutability
+
+The foreach loop supports both mutable and immutable iteration variables.
+
+- Mutable variable:
+    
+    variable numbers integer[] = {1, 2, 3};
+
+    foreach (variable number : numbers) {
+        number = number * 2;
+        terminal number;
+    }
+
+- Immutable variable:
+
+    variable numbers integer[] = {1, 2, 3};
+
+    foreach (constant number : numbers) {
+        terminal number;
+    }
+
+When declared using constant, the loop variable cannot be reassigned within the loop body.
+
+##### Iterating Over Text
+
+When the iterable expression evaluates to text, the loop iterates over its individual characters.
+
+    variable message text = "IrisScript";
+
+    foreach (constant character : message) {
+        terminal character;
+    }
+
+Each iteration assigns the next character to 'character'. Note that in IrisScript, individual characters in a text expression are also of type `text`.
+
+##### Iteration Behavior
+
+A foreach loop follows these general steps:
+
+1. Evaluates the iterable expression.
+2. Determines the type of its elements.
+3. Iterates over the elements in their iteration order.
+4. Assigns the current element to the loop variable.
+5. Executes the loop body.
+6. Repeats until all elements have been processed.
+
+The loop terminates automatically after the last element has been visited. No manual index management or termination condition is required.
 
 #### Loop Control Keywords
 
@@ -714,37 +801,38 @@ The compiler features categorized error reporting.
 | E1008 | Error | Expected opening parenthesis. |
 | E1009 | Error | Expected identifier name. |
 | E1010 | Error | Constant declaration must have an initializer. |
-| E1011 | Error | Expected variable or constant keyword in parameter declaration. |
-| E1012 | Error | Expected function or variable declaration after global. |
+| E1011 | Error | Expected `variable` or `constant` keyword. |
+| E1012 | Error | Expected function or variable declaration after `global`. |
 | E1013 | Error | Global declaration attempted inside a local block. |
 | E1014 | Error | Expected closing bracket for array declaration. |
 | E1015 | Error | Expected closing brace after array literal. |
 | E1016 | Error | Expected closing bracket for index expression. |
 | E1017 | Error | Expected arrow operator after ternary condition. |
 | E1018 | Error | Expected colon between ternary branches. |
-| E1019 | Error | Duplicate 'otherwise' branches in switch. |
-| E1020 | Error | Expected 'when' or 'otherwise' branch keyword. |
-| E1021 | Error | Expected arrow operator after switch branch. |
-| E1022 | Error | Missing 'otherwise' branch in switch expression. |
+| E1019 | Error | Duplicate `otherwise` branches in `switch`. |
+| E1020 | Error | Expected `when` or `otherwise` branch keyword. |
+| E1021 | Error | Expected arrow operator after `switch` branch. |
+| E1022 | Error | Missing `otherwise` branch in `switch` expression. |
 | E1023 | Error | Expected text or expression in interpolated text. |
 | E1024 | Error | Unterminated interpolated text. |
 | E1025 | Error | Number of initializers does not match number of variables. |
 | E1026 | Error | Expected comma. |
-| E1027 | Error | Missing semicolon or illegal statement in 'for' initializations. |
+| E1027 | Error | Missing semicolon or illegal statement in `for` initializations. |
+| E1028 | Error | Expected semicolon after variable declaration in `foreach`. |
 
 ### Semantic Diagnostics (E2xxx, W2xxx)
 
 | Code | Severity | Description |
 |:---|:---|:---|
 | E2001 | Error | Unknown type name. |
-| E2002 | Error | Void type is not allowed in this position. |
+| E2002 | Error | `void` type is not allowed in this position. |
 | E2003 | Error | Duplicate declaration of a symbol in the same scope. |
-| E2004 | Error | Break statement outside a loop body. |
+| E2004 | Error | `break` statement outside a loop body. |
 | E2005 | Error | Type mismatch between expected type and provided expression type. |
-| E2006 | Error | Return statement outside a function body. |
+| E2006 | Error | `return` statement outside a function body. |
 | E2007 | Error | Void function cannot return an expression value. |
 | E2008 | Error | Non-void function must return an expression value. |
-| E2009 | Error | Skip statement outside a loop body. |
+| E2009 | Error | `skip` statement outside a loop body. |
 | E2010 | Error | Unresolved identifier name. |
 | E2011 | Error | Cannot assign a value to a function symbol. |
 | E2012 | Error | Cannot reassign a constant. |
@@ -772,13 +860,14 @@ The compiler features categorized error reporting.
 | E2034 | Error | Indices must be integer expressions. |
 | E2035 | Error | Index target must be an array or a text. |
 | E2036 | Error | Multidimensional array cannot have partial size-declaration. |
-| E2037 | Error | Length operator requires an array or text operand. |
+| E2037 | Error | `length` operator requires an array or text operand. |
 | E2038 | Error | Ternary operator's branches must have compatible types. |
 | E2039 | Error | Invalid expression type for switch target. |
-| E2040 | Error | Only literal expressions are allowed in switch's 'when' branches. |
-| E2041 | Error | Only unique 'when' branch expressions are allowed in switch. |
-| E2042 | Error | All branches of a switch expression must return the same type. |
-| E2043 | Error | Invalid operands for type-cast expression. |
+| E2040 | Error | Only literal expressions are allowed in `switch`'s `when` branches. |
+| E2041 | Error | Only unique `when` branch expressions are allowed in `switch`. |
+| E2042 | Error | All branches of a `switch` expression must return the same type. |
+| E2043 | Error | Invalid operands for `typecast` expression. |
+| E2044 | Error | Only iterable expressions can be used in a `foreach` loop. |
 | W2001 | Warning | Potential loss of precision converting decimal to integer. |
 
 ### Build and Execution Diagnostics (E3xxx)
