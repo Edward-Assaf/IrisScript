@@ -1,11 +1,16 @@
 package irisscript.codegen;
 
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 import irisscript.ast.AstNode;
 import irisscript.ast.CompilationUnit;
@@ -32,6 +37,8 @@ public final class JavaCodeGenerator {
 
     private final Map<CompilationUnit, String> classNames = new IdentityHashMap<>();
 
+    private final Map<AstNode, String> declarationJavaNames = new IdentityHashMap<>();
+
     private StringBuilder out;
 
     private int indent;
@@ -50,7 +57,9 @@ public final class JavaCodeGenerator {
 
     public List<GeneratedSource> generate(List<CompilationUnit> units, SourceManager sources) {
         classNames.clear();
+        declarationJavaNames.clear();
         this.internalSwitchVariableID = 0;
+        prepareDeclarations(units);
         for (CompilationUnit unit : units) {
             SourceFile source = sources.get(unit.span().sourceID());
             String filename = Path.of(source.getName()).getFileName().toString();
@@ -302,7 +311,7 @@ public final class JavaCodeGenerator {
                 }
                 ParameterDeclaration parameter = function.parameters().get(i);
                 signature.append(typeMapper.map(parameter.type())).append(' ')
-                        .append(nameMangler.mangle(parameter.name()));
+                        .append(getDeclarationName(parameter, parameter.name()));
             }
             signature.append(") {");
             emitLine(signature.toString());
@@ -334,7 +343,8 @@ public final class JavaCodeGenerator {
                 if (variable.isConstant()) {
                     out.append("final ");
                 }
-                out.append(typeMapper.map(variable.type())).append(' ').append(nameMangler.mangle(variable.name()));
+                out.append(typeMapper.map(variable.type())).append(' ')
+                        .append(getDeclarationName(variable, variable.name()));
                 if (variable.initializer() != null) {
                     out.append(" = ");
                     emitExpressionAs(toTypeInfo(variable.type()), variable.initializer());
@@ -386,6 +396,7 @@ public final class JavaCodeGenerator {
                 emitBlockInline(loop.body());
                 out.append('\n');
             }
+            case ForStatement loop -> emitForStatement(loop);
             case BreakStatement ignored -> emitLine("break;");
             case SkipStatement ignored -> emitLine("continue;");
             case TerminalStatement terminal -> {
@@ -582,12 +593,7 @@ public final class JavaCodeGenerator {
                 if (type == null) {
                     throw new IllegalStateException("Array literal missing semantic type");
                 }
-                String javaElementType = javaElementType(type.type());
-                out.append("new ");
-                out.append(javaElementType);
-                for (int i = 0; i < type.dimensions(); i++) {
-                    out.append("[]");
-                }
+                out.append("new ").append(typeMapper.map(type));
                 out.append('{');
                 for (int i = 0; i < array.elements().size(); i++) {
                     if (i > 0) {
@@ -614,21 +620,10 @@ public final class JavaCodeGenerator {
             }
             case SizeExpression size -> {
                 TypeNode type = size.targetType();
-                switch (type.name()) {
-                    case "integer":
-                        out.append("8L");
-                        break;
-                    case "decimal":
-                        out.append("8L");
-                        break;
-                    case "boolean":
-                        out.append("1L");
-                        break;
-                    case "text":
-                        out.append("8L");
-                        break;
-                    default:
-                        throw new IllegalStateException("Unsupported type for size(): " + type.name());
+                switch (type.name().toLowerCase()) {
+                    case "integer", "decimal", "text" -> out.append("8L");
+                    case "boolean" -> out.append("1L");
+                    default -> throw new IllegalStateException("Unsupported type for size(): " + type.name());
                 }
             }
             case LengthExpression length -> {
@@ -754,7 +749,7 @@ public final class JavaCodeGenerator {
                     break;
                 }
                 out.append("((");
-                emitJavaElementTypeAndDimensions(castType);
+                out.append(typeMapper.map(castType));
                 out.append(") (");
                 emitExpression(typecastExpression.castedExpression());
                 out.append("))");
@@ -780,48 +775,81 @@ public final class JavaCodeGenerator {
         }
     }
 
+    private void emitForStatement(ForStatement loop) {
+        emitIndent();
+        out.append("for (");
+        emitForInitPart(loop.initializations());
+        if (loop.condition() != null) {
+            emitExpression(loop.condition());
+        }
+        out.append("; ");
+        int updatesSize = loop.updates().size();
+        for (int i = 0; i < updatesSize; i++) {
+            if (i > 0) {
+                out.append(", ");
+            }
+            emitExpression(loop.updates().get(i));
+        }
+        out.append(") ");
+        emitBlockInline(loop.body());
+        out.append('\n');
+    }
+
+    private void emitForInitPart(List<Statement> initStatements) {
+        int initStatementsSize = initStatements.size();
+        for (int i = 0; i < initStatementsSize; i++) {
+            Statement init = initStatements.get(i);
+            if (init instanceof VariableDeclarationStatement variable) {
+                if (variable.isConstant() && (i == 0)) {
+                    out.append("final ");
+                }
+                if (i == 0) {
+                    out.append(typeMapper.map(variable.type())).append(' ');
+                }
+                out.append(getDeclarationName(variable, variable.name()));
+                if (variable.initializer() != null) {
+                    out.append(" = ");
+                    emitExpressionAs(toTypeInfo(variable.type()), variable.initializer());
+                } else if (isSizedArray(variable.type())) {
+                    out.append(" = ");
+                    emitSizedArrayCreation(variable.type());
+                }
+                if (i < initStatementsSize - 1) {
+                    out.append(", ");
+                }
+            } else if (init instanceof ExpressionStatement expression) {
+                emitExpression(expression.expression());
+                if (i < initStatementsSize - 1) {
+                    out.append(", ");
+                }
+            }
+        }
+        out.append("; ");
+    }
+
     private String emitSwitchVariableName(Expression target, TypeInfo targetType) {
         String internalVariableName = "__irisSwitchVar" + (internalSwitchVariableID++);
-        emitJavaElementTypeAndDimensions(targetType);
-        out.append(" " + internalVariableName + " = ");
+        out.append(typeMapper.map(targetType)).append(" ").append(internalVariableName).append(" = ");
         emitExpression(target);
         out.append(";\n");
         return internalVariableName;
     }
 
     private void emitJavaElementTypeAndDimensionsBoxed(TypeInfo type) {
-        if (type == null) {
-            return;
-        }
-        if (type.isArray()) {
-            emitJavaElementTypeAndDimensions(type);
-            return;
-        }
-        switch (type.type()) {
-            case INTEGER -> out.append("Long");
-            case DECIMAL -> out.append("Double");
-            case BOOLEAN -> out.append("Boolean");
-            case TEXT -> out.append("String");
-            default -> throw new IllegalStateException("Unsupported type for Java element type: " + type.type());
+        if (type != null) {
+            out.append(typeMapper.mapBoxed(type));
         }
     }
 
     private void emitJavaElementTypeAndDimensions(TypeInfo type) {
-        if (type == null) {
-            return;
+        if (type != null) {
+            out.append(typeMapper.map(type));
         }
-        out.append(javaElementType(type.type()));
-        out.append("[]".repeat(type.dimensions()));
     }
 
     private void emitJavaNumericBoxedCastToUnboxed(TypeInfo type) {
-        if (type == null) {
-            return;
-        }
-        switch (type.type()) {
-            case INTEGER -> out.append("longValue()");
-            case DECIMAL -> out.append("doubleValue()");
-            default -> throw new IllegalStateException("Unsupported type for Java element type: " + type.type());
+        if (type != null) {
+            out.append(typeMapper.mapBoxedUnwrapMethod(type));
         }
     }
 
@@ -902,10 +930,130 @@ public final class JavaCodeGenerator {
                 || declaration instanceof VariableDeclarationStatement variable && variable.isGlobal());
         String targetClass = !topLevel ? currentClassName
                 : (global ? GLOBAL_CLASS : (owner == null ? currentClassName : classNames.get(owner)));
-        if (targetClass != null && !targetClass.equals(currentClassName)) {
-            out.append(targetClass).append('.');
+        if (topLevel) {
+            if (targetClass != null
+                    && (!targetClass.equals(currentClassName) || declaration instanceof VariableDeclarationStatement)) {
+                out.append(targetClass).append('.');
+            }
+            out.append(nameMangler.mangle(sourceName));
+        } else {
+            out.append(getDeclarationName(declaration, sourceName));
         }
-        out.append(nameMangler.mangle(sourceName));
+    }
+
+    private String getDeclarationName(AstNode declaration, String fallbackName) {
+        if (declaration != null) {
+            String name = declarationJavaNames.get(declaration);
+            if (name != null) {
+                return name;
+            }
+        }
+        return nameMangler.mangle(fallbackName);
+    }
+
+    private void prepareDeclarations(List<CompilationUnit> units) {
+        for (CompilationUnit unit : units) {
+            ScopeStack unitScopes = new ScopeStack();
+            unitScopes.push();
+            for (Statement stmt : unit.statements()) {
+                scanStatement(stmt, unitScopes);
+            }
+            unitScopes.pop();
+            for (Declaration decl : unit.declarations()) {
+                if (decl instanceof FunctionDeclaration function) {
+                    ScopeStack functionScopes = new ScopeStack();
+                    functionScopes.push();
+                    for (ParameterDeclaration param : function.parameters()) {
+                        String name = functionScopes.declare(param.name());
+                        declarationJavaNames.put(param, name);
+                    }
+                    scanBlock(function.body(), functionScopes);
+                    functionScopes.pop();
+                }
+            }
+        }
+    }
+
+    private void scanBlock(BlockStatement block, ScopeStack scopes) {
+        if (block == null) {
+            return;
+        }
+        scopes.push();
+        for (Statement stmt : block.statements()) {
+            scanStatement(stmt, scopes);
+        }
+        scopes.pop();
+    }
+
+    private void scanStatement(Statement statement, ScopeStack scopes) {
+        if (statement == null) {
+            return;
+        }
+        switch (statement) {
+            case VariableDeclarationStatement variable -> {
+                if (!semanticModel.isTopLevelDeclaration(variable)) {
+                    String name = scopes.declare(variable.name());
+                    declarationJavaNames.put(variable, name);
+                }
+            }
+            case BlockStatement block -> scanBlock(block, scopes);
+            case IfStatement conditional -> {
+                scanStatement(conditional.thenBranch(), scopes);
+                if (conditional.elseBranch() != null) {
+                    scanStatement(conditional.elseBranch(), scopes);
+                }
+            }
+            case WhileStatement loop -> scanStatement(loop.body(), scopes);
+            case ForStatement loop -> {
+                scopes.push();
+                for (Statement init : loop.initializations()) {
+                    scanStatement(init, scopes);
+                }
+                scanBlock(loop.body(), scopes);
+                scopes.pop();
+            }
+            case SwitchStatement switchStatement -> {
+                for (BlockStatement caseBlock : switchStatement.caseStatements()) {
+                    scanBlock(caseBlock, scopes);
+                }
+                if (switchStatement.defaultCase() != null) {
+                    scanBlock(switchStatement.defaultCase(), scopes);
+                }
+            }
+            default -> {
+            }
+        }
+    }
+
+    private final class ScopeStack {
+
+        private final Deque<Set<String>> stack = new ArrayDeque<>();
+        private final Map<String, Integer> shadowCounters = new HashMap<>();
+
+        void push() {
+            stack.push(new HashSet<>());
+        }
+
+        void pop() {
+            stack.pop();
+        }
+
+        String declare(String sourceName) {
+            boolean isShadowing = false;
+            for (Set<String> scope : stack) {
+                if (scope.contains(sourceName)) {
+                    isShadowing = true;
+                    break;
+                }
+            }
+            stack.peek().add(sourceName);
+            if (!isShadowing) {
+                return nameMangler.mangle(sourceName);
+            }
+            int count = shadowCounters.merge(sourceName, 1, Integer::sum);
+            return nameMangler.mangle(sourceName) + "$" + count;
+        }
+
     }
 
     private void emitLiteral(Object value) {
@@ -929,15 +1077,7 @@ public final class JavaCodeGenerator {
     }
 
     private void emitSizedArrayCreation(TypeNode type) {
-        String javaElementType = switch (type.name()) {
-            case "integer" -> "long";
-            case "decimal" -> "double";
-            case "text" -> "String";
-            case "boolean" -> "boolean";
-            default -> "Object";
-        };
-        out.append("new ");
-        out.append(javaElementType);
+        out.append("new ").append(typeMapper.mapElementType(type.name()));
         for (Expression dimension : type.dimensions()) {
             out.append('[');
             if (dimension != null) {
@@ -994,11 +1134,7 @@ public final class JavaCodeGenerator {
     }
 
     private String formatType(TypeInfo type) {
-        StringBuilder builder = new StringBuilder(type.type().name().toLowerCase());
-        for (int i = 0; i < type.dimensions(); i++) {
-            builder.append("[]");
-        }
-        return builder.toString();
+        return typeMapper.map(type);
     }
 
     private void emitLine(String line) {
@@ -1014,28 +1150,22 @@ public final class JavaCodeGenerator {
         return type != null && type.isArray() && type.dimensions().stream().anyMatch(Objects::nonNull);
     }
 
-    private String javaElementType(SemanticType type) {
-        return switch (type) {
-            case INTEGER -> "long";
-            case DECIMAL -> "double";
-            case TEXT -> "String";
-            case BOOLEAN -> "boolean";
-            default -> "Object";
-        };
-    }
-
     private TypeInfo toTypeInfo(TypeNode type) {
-        int dimensions = (type.dimensions() == null) ? 0 : type.dimensions().size();
-        return switch (type.name().toUpperCase()) {
-            case "INTEGER" -> new TypeInfo(SemanticType.INTEGER, dimensions);
-            case "DECIMAL" -> new TypeInfo(SemanticType.DECIMAL, dimensions);
-            case "BOOLEAN" -> new TypeInfo(SemanticType.BOOLEAN, dimensions);
-            case "TEXT" -> new TypeInfo(SemanticType.TEXT, dimensions);
-            case "VOID" -> new TypeInfo(SemanticType.VOID, dimensions);
-            default -> {
-                throw new IllegalArgumentException("Unsupported type: " + type.name());
-            }
-        };
+        if (type == null) {
+            return null;
+        }
+        return semanticModel.typeOf(type).orElseGet(() -> {
+            int dimensions = (type.dimensions() == null) ? 0 : type.dimensions().size();
+            SemanticType semType = switch (type.name().toLowerCase()) {
+                case "integer" -> SemanticType.INTEGER;
+                case "decimal" -> SemanticType.DECIMAL;
+                case "boolean" -> SemanticType.BOOLEAN;
+                case "text" -> SemanticType.TEXT;
+                case "void" -> SemanticType.VOID;
+                default -> throw new IllegalArgumentException("Unsupported type: " + type.name());
+            };
+            return new TypeInfo(semType, dimensions);
+        });
     }
 
     private String toClassName(String stem) {

@@ -128,6 +128,9 @@ public final class IrisParser {
         if (tokens.check(TokenType.KEYWORD_WHILE)) {
             return List.of(parseWhileStatement());
         }
+        if (tokens.check(TokenType.KEYWORD_FOR)) {
+            return List.of(parseForStatement());
+        }
         if (tokens.check(TokenType.KEYWORD_SWITCH)) {
             return List.of(parseSwitchStatement());
         }
@@ -226,6 +229,45 @@ public final class IrisParser {
         BlockStatement body = parseBlockStatement();
         SourceSpan span = SourceSpan.covering(whileKeyword.span(), body.span());
         return new WhileStatement(condition, body, span);
+    }
+
+    private ForStatement parseForStatement() {
+        Token forKeyword = tokens.consume(); // 'for'
+        consume(TokenType.DELIMITER_LPAREN, "E1008", "Expected '(' after 'for'");
+        List<Statement> initializations = new ArrayList<>();
+        if (tokens.match(TokenType.KEYWORD_VARIABLE, TokenType.KEYWORD_CONSTANT)) {
+            Token variableStart = tokens.previous();
+            boolean isConstant = (variableStart.type() == TokenType.KEYWORD_CONSTANT);
+            initializations = parseVariableOrConstantDeclaration(variableStart, isConstant, false, variableStart);
+        } else if (!tokens.check(TokenType.DELIMITER_SEMICOLON)) {
+            do {
+                Expression expression = parseExpression();
+                initializations.add(new ExpressionStatement(expression, expression.span()));
+            } while (tokens.match(TokenType.DELIMITER_COMMA));
+            consume(TokenType.DELIMITER_SEMICOLON, "E1027",
+                    "Either missing ';' or an illegal kind of statement in 'for' initializations was used");
+        } else {
+            tokens.consume(); // ';'
+        }
+        Expression condition = null;
+        if (!tokens.check(TokenType.DELIMITER_SEMICOLON)) {
+            condition = parseExpression();
+            consume(TokenType.DELIMITER_SEMICOLON, "E1005", "Expected ';' after 'for' condition");
+        } else {
+            tokens.consume(); // ';'
+        }
+        List<Expression> updates = new ArrayList<>();
+        if (!tokens.check(TokenType.DELIMITER_RPAREN)) {
+            do {
+                updates.add(parseExpression());
+            } while (tokens.match(TokenType.DELIMITER_COMMA));
+            consume(TokenType.DELIMITER_RPAREN, "E1003", "Expected ')' after 'for' updates");
+        } else {
+            tokens.consume(); // ')'
+        }
+        BlockStatement body = parseBlockStatement();
+        SourceSpan span = SourceSpan.covering(forKeyword.span(), body.span());
+        return new ForStatement(initializations, condition, updates, body, span);
     }
 
     private SwitchStatement parseSwitchStatement() {
@@ -786,7 +828,7 @@ public final class IrisParser {
     private boolean isStatementStart(TokenType type) {
         return switch (type) {
             case KEYWORD_IF, KEYWORD_WHILE, KEYWORD_RETURN, KEYWORD_BREAK, KEYWORD_SKIP, KEYWORD_VARIABLE,
-                    KEYWORD_CONSTANT, DELIMITER_LBRACE, KEYWORD_GLOBAL, KEYWORD_TERMINAL, KEYWORD_SWITCH ->
+                    KEYWORD_CONSTANT, DELIMITER_LBRACE, KEYWORD_GLOBAL, KEYWORD_TERMINAL, KEYWORD_SWITCH, KEYWORD_FOR ->
                 true;
             default -> false;
         };

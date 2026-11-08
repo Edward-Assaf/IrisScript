@@ -1,4 +1,4 @@
-# IrisScript Language (v1.2.4)
+# IrisScript Language (v1.3)
 
 IrisScript is a statically typed, structured programming language designed for clarity, safety, and seamless execution on the Java Virtual Machine. IrisScript compiles into Java source code, which is then compiled and executed using an installed Java Development Kit (JDK).
 
@@ -21,7 +21,7 @@ This repository contains the language specification, compiler pipeline, diagnost
   - [Variables and Constants](#variables-and-constants)
   - [Operators and Expression Precedence](#operators-and-expression-precedence)
   - [Control Flow Statements](#control-flow-statements)
-  - [Loops (while)](#loops-while)
+  - [Loops (while, for)](#loops-while-for)
   - [Arrays](#arrays)
   - [Console Output: The Terminal Statement](#console-output-the-terminal-statement)
   - [Functions and Signatures](#functions-and-signatures)
@@ -47,7 +47,7 @@ This repository contains the language specification, compiler pipeline, diagnost
 
 IrisScript is built around four guiding principles:
 
-1. Explicitness and Determinism: Types, mutability, and cross-file visibility are explicitly declared. Variable shadowing in the same scope and implicit narrowing conversions are disallowed.
+1. Explicitness and Determinism: Types, mutability, and cross-file visibility are explicitly declared. Re-declaring variables in the same scope and implicit narrowing conversions are disallowed.
 2. Definite Safety: Non-void functions undergo control-flow reachability analysis to ensure every possible execution path returns a value.
 3. Frictionless Transpilation: IrisScript generates Java source code, enabling debugging, profiling, and integration with existing JVM infrastructure.
 4. Resilient Diagnostics: Lexer, parser, and semantic stages use structured error codes (E0xxx, E1xxx, E2xxx, E3xxx, W2xxx) and source locations to identify faults precisely.
@@ -212,10 +212,11 @@ Identifiers must start with an ASCII letter (a-z, A-Z) or an underscore (_), fol
 The following reserved words cannot be used as identifiers:
 
     boolean    break      constant   decimal    else
-    elseif     false      function   global     if
-    integer    length     otherwise  return     size
-    skip       switch     terminal   text       true
-    type       variable   void       when       while
+    elseif     false      for        function   global
+    if         integer    length     otherwise  return
+    size       skip       switch     terminal   text
+    true       type       typecast   variable   void
+    when       while
 
 #### Comments
 
@@ -469,7 +470,11 @@ And it follows the same rules of a switch statement mentioned above, except for 
         otherwise -> 50;
     }; // prints 50
 
-#### Loops (while)
+### Loops (while, for)
+
+IrisScript provides both `while` loops and C/Java-style `for` loops for structured repetition. Braces are strictly mandatory for all loop bodies.
+
+#### The `while` Loop
 
 The while loop continues executing as long as its condition remains true:
 
@@ -487,9 +492,41 @@ The while loop continues executing as long as its condition remains true:
         terminal "\n";
     }
 
-- break: Immediately terminates the innermost loop.
-- skip: Bypasses the rest of the loop body and advances to the next iteration.
-- Using break or skip outside a loop produces a semantic error.
+#### The `for` Loop
+
+The `for` loop provides structured iteration over ranges and sequences with three distinct, optional clauses:
+
+    for ( [initializations] ; [condition] ; [updates] ) {
+        // loop body
+    }
+
+##### 1. Initializations (`ForInit`)
+The initialization clause executes once before the loop begins. It supports:
+- **Variable or Constant Declarations:** Declaring one or more loop-scoped variables or constants sharing the same type:
+      for (variable i integer = 0; i < 10; i = i + 1) { ... }
+      for (variable i, j integer = 0, 10; i < j; i = i + 1, j = j - 1) { ... }
+  Variables declared here are scoped exclusively to the loop header and body.
+- **Comma-Separated Expressions:** Reusing existing variables or executing side-effects:
+      for (i = 0, j = 100; i < j; i = i + 1) { ... }
+- **Empty:** Omitting initialization altogether:
+      for (; i < 10; i = i + 1) { ... }
+
+##### 2. Condition (`Condition`)
+Evaluated *before* every iteration:
+- Must evaluate strictly to a `boolean` expression.
+- When omitted (e.g. `for (;;) { ... }`), the condition implicitly defaults to `true`, creating an infinite loop until terminated by `break` or `return`.
+
+##### 3. Updates (`ForUpdate`)
+Executes at the end of each iteration, *and immediately whenever `skip;` is encountered*:
+- Accepts a comma-separated list of side-effect expressions (assignments, increments/decrements, calls):
+      for (variable i integer = 0; i < 10; i = i + 1, counter = counter + 2) { ... }
+- Can be omitted if step updates are handled within the loop body.
+
+#### Loop Control Keywords
+
+- **break**: Immediately terminates the innermost loop.
+- **skip**: Bypasses the rest of the loop body and advances immediately to the loop update clause (in a `for` loop) or the condition check (in a `while` loop). Because `skip` triggers the `updates` clause in a `for` loop, loop index progression is naturally protected from accidental infinite loops.
+- Using `break` or `skip` outside a loop produces semantic error `E2004` or `E2009`.
 
 ---
 
@@ -598,6 +635,32 @@ Prefixing a declaration with global makes it accessible across all compilation u
 
 Other source files in the same compilation can access these declarations without import statements.
 
+#### Block Scoping and Variable Shadowing
+
+IrisScript uses lexical block scoping. Variables declared inside a block (`{ ... }`) or loop header are visible only within that block and its nested child scopes.
+
+- **Re-declaration (Disallowed in Same Scope):** Declaring two variables with the same identifier in the *exact same* scope produces diagnostic error `E2003`.
+- **Variable Shadowing (Allowed in Inner Scopes):** Declaring a variable in an inner block or loop with the same name as a variable in an outer (enclosing) scope is fully permitted. Inside the inner block, the inner declaration *shadows* the outer variable, and any references to that name resolve to the innermost declaration:
+
+      variable count integer = 10;
+      if (count > 0) {
+          variable count integer = 99; // Legal: shadows outer 'count'
+          terminal count;              // Prints 99
+      }
+      terminal count;                  // Prints 10
+
+- **Nested Loops and Shadowing:**
+  A `for` loop's initialization clause creates its own scope. A loop variable can shadow an outer variable or parameter:
+
+      variable i integer = 50;
+      for (variable i integer = 0; i < 5; i = i + 1) {
+          terminal i; // Prints 0, 1, 2, 3, 4
+      }
+      terminal i;     // Prints 50
+
+- **Target Java Transpilation Workaround:**
+  While Java normally forbids an inner local variable from shadowing another local variable in the same method, the IrisScript compiler (`JavaCodeGenerator`) transparently tracks lexical scopes and mangles shadowed variable names in the emitted Java source code (e.g., `iris$count$1`). Top-level fields are always explicitly class-qualified. As a result, developers enjoy natural, intuitive block scoping and variable shadowing in IrisScript with zero Java compiler collisions or leaky side effects.
+
 ---
 
 ### Program Entry Points and Execution Modes
@@ -667,6 +730,7 @@ The compiler features categorized error reporting.
 | E1024 | Error | Unterminated interpolated text. |
 | E1025 | Error | Number of initializers does not match number of variables. |
 | E1026 | Error | Expected comma. |
+| E1027 | Error | Missing semicolon or illegal statement in 'for' initializations. |
 
 ### Semantic Diagnostics (E2xxx, W2xxx)
 

@@ -1,8 +1,10 @@
 package irisscript.semantic;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -33,6 +35,10 @@ public final class IrisSemanticAnalyzer {
     private TypeInfo currentFunctionReturnType = null;
 
     private int loopDepth = 0;
+
+    private final Map<TypeNode, TypeInfo> resolvedTypes = new IdentityHashMap<>();
+
+    private final Set<TypeNode> erroredTypeNodes = Collections.newSetFromMap(new IdentityHashMap<>());
 
     private final SemanticModel semanticModel = new SemanticModel();
 
@@ -177,6 +183,7 @@ public final class IrisSemanticAnalyzer {
             case VariableDeclarationStatement variableStatement ->
                 analyzeVariableStatement(variableStatement, scope, unitScope);
             case WhileStatement whileStatement -> analyzeWhileStatement(whileStatement, scope, unitScope);
+            case ForStatement forStatement -> analyzeForStatement(forStatement, scope, unitScope);
             case TerminalStatement terminalStatement -> analyzeTerminalStatement(terminalStatement, scope);
             case SwitchStatement switchStatement -> analyzeSwitchStatement(switchStatement, scope, unitScope);
             case ErrorStatement errorStatement -> analyzeErrorStatement(errorStatement);
@@ -277,7 +284,27 @@ public final class IrisSemanticAnalyzer {
         validateType(BOOLEAN_TYPE, conditionType, whileStatement.condition().span());
         try {
             loopDepth++;
-            analyzeStatement(whileStatement.body(), scope, unitScope);
+            analyzeBlockStatement(whileStatement.body(), scope, unitScope);
+        } finally {
+            loopDepth--;
+        }
+    }
+
+    private void analyzeForStatement(ForStatement forStatement, Scope scope, Scope unitScope) {
+        Scope forScope = new Scope(scope);
+        for (Statement forInitializer : forStatement.initializations()) {
+            analyzeStatement(forInitializer, forScope, unitScope);
+        }
+        if (forStatement.condition() != null) {
+            TypeInfo conditionType = analyzeExpression(forStatement.condition(), forScope);
+            validateType(BOOLEAN_TYPE, conditionType, forStatement.condition().span());
+        }
+        for (Expression forUpdate : forStatement.updates()) {
+            analyzeExpression(forUpdate, forScope);
+        }
+        try {
+            loopDepth++;
+            analyzeBlockStatement(forStatement.body(), forScope, unitScope);
         } finally {
             loopDepth--;
         }
@@ -922,6 +949,13 @@ public final class IrisSemanticAnalyzer {
         if (type == null) {
             return ERROR_TYPE;
         }
+        TypeInfo cached = resolvedTypes.get(type);
+        if (cached != null) {
+            return cached;
+        }
+        if (erroredTypeNodes.contains(type)) {
+            return ERROR_TYPE;
+        }
         SemanticType semanticType = switch (type.name()) {
             case "integer" -> SemanticType.INTEGER;
             case "text" -> SemanticType.TEXT;
@@ -931,15 +965,20 @@ public final class IrisSemanticAnalyzer {
             default -> SemanticType.ERROR;
         };
         if (semanticType == SemanticType.ERROR) {
+            erroredTypeNodes.add(type);
             reportError("E2001", "Unknown type name: " + type.name(), type.span());
             return ERROR_TYPE;
         }
         if (semanticType == SemanticType.VOID && !voidAllowed) {
+            erroredTypeNodes.add(type);
             reportError("E2002", "Void type name is not allowed here", type.span());
             return ERROR_TYPE;
         }
         int dimensions = (type.dimensions() == null) ? 0 : type.dimensions().size();
-        return new TypeInfo(semanticType, dimensions);
+        TypeInfo info = new TypeInfo(semanticType, dimensions);
+        resolvedTypes.put(type, info);
+        semanticModel.bindType(type, info);
+        return info;
     }
 
     private void validateArraySize(TypeNode type, Scope scope) {

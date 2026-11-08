@@ -9,6 +9,7 @@ import java.util.Optional;
 import irisscript.ast.AstNode;
 import irisscript.ast.CompilationUnit;
 import irisscript.ast.expressions.Expression;
+import irisscript.ast.types.TypeNode;
 
 public final class SemanticModel {
 
@@ -19,6 +20,8 @@ public final class SemanticModel {
     private final java.util.Set<AstNode> topLevelDeclarations = Collections.newSetFromMap(new IdentityHashMap<>());
 
     private final Map<Expression, TypeInfo> expressionTypes = new IdentityHashMap<>();
+
+    private final Map<TypeNode, TypeInfo> nodeTypes = new IdentityHashMap<>();
 
     void bindResolution(AstNode use, AstNode declaration) {
         resolvedDeclarations.put(Objects.requireNonNull(use), Objects.requireNonNull(declaration));
@@ -39,6 +42,14 @@ public final class SemanticModel {
 
     void bindExpressionType(Expression expression, TypeInfo type) {
         expressionTypes.put(Objects.requireNonNull(expression), Objects.requireNonNull(type));
+    }
+
+    void bindType(TypeNode node, TypeInfo type) {
+        nodeTypes.put(Objects.requireNonNull(node), Objects.requireNonNull(type));
+    }
+
+    public Optional<TypeInfo> typeOf(TypeNode node) {
+        return Optional.ofNullable(nodeTypes.get(Objects.requireNonNull(node)));
     }
 
     public Optional<TypeInfo> expressionType(Expression expression) {
