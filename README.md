@@ -1038,6 +1038,30 @@ Note that the `length` keyword can be used with text as well.
 
 ---
 
+### 6. For Loop, Array Iteration, and Type-Casting
+
+This example populates an integer array and prints all its elements on a single line using a `for` loop, `length`, and `typecast`.
+
+    variable nums integer[] = {10, 25, 3, 47, 8};
+    variable line text = "";
+
+    for (variable i integer = 0; i < length(nums); i++) {
+        line = line + typecast(nums[i], text) + " ";
+    }
+
+    terminal line;
+
+Output:
+
+    10 25 3 47 8
+
+A few things worth noting:
+
+- The `for` loop's init clause (`variable i integer = 0`) declares `i` in the loop's own block scope; `i` is not accessible outside the loop.
+- The update clause (`i++`) runs after every iteration before the condition is re-evaluated.
+
+---
+
 ## Tooling and VS Code Extension
 
 IrisScript includes a VS Code extension located in the repository's VS Code extension directory.
