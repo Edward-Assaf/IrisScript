@@ -216,7 +216,7 @@ The following reserved words cannot be used as identifiers:
     if         integer    length     otherwise  return
     size       skip       switch     terminal   text
     true       type       typecast   variable   void
-    when       while
+    when       while      foreach
 
 #### Comments
 
@@ -503,13 +503,19 @@ The `for` loop provides structured iteration over ranges and sequences with thre
 ##### 1. Initializations (`ForInit`)
 The initialization clause executes once before the loop begins. It supports:
 - **Variable or Constant Declarations:** Declaring one or more loop-scoped variables or constants sharing the same type:
-      for (variable i integer = 0; i < 10; i = i + 1) { ... }
-      for (variable i, j integer = 0, 10; i < j; i = i + 1, j = j - 1) { ... }
-  Variables declared here are scoped exclusively to the loop header and body.
+
+    for (variable i integer = 0; i < 10; i = i + 1) { ... }
+    for (variable i, j integer = 0, 10; i < j; i = i + 1, j = j - 1) { ... }
+
+Variables declared here are scoped exclusively to the loop header and body.
+
 - **Comma-Separated Expressions:** Reusing existing variables or executing side-effects:
-      for (i = 0, j = 100; i < j; i = i + 1) { ... }
+
+    for (i = 0, j = 100; i < j; i = i + 1) { ... }
+
 - **Empty:** Omitting initialization altogether:
-      for (; i < 10; i = i + 1) { ... }
+
+    for (; i < 10; i = i + 1) { ... }
 
 ##### 2. Condition (`Condition`)
 Evaluated *before* every iteration:
@@ -518,8 +524,11 @@ Evaluated *before* every iteration:
 
 ##### 3. Updates (`ForUpdate`)
 Executes at the end of each iteration, *and immediately whenever `skip;` is encountered*:
+
 - Accepts a comma-separated list of side-effect expressions (assignments, increments/decrements, calls):
-      for (variable i integer = 0; i < 10; i = i + 1, counter = counter + 2) { ... }
+
+    for (variable i integer = 0; i < 10; i = i + 1, counter = counter + 2) { ... }
+
 - Can be omitted if step updates are handled within the loop body.
 
 #### The `foreach` Loop
@@ -543,7 +552,7 @@ The foreach loop provides a convenient way to iterate over the elements of an it
 Currently, foreach supports the following iterable types:
 
 | Iterable | Iterated Elements |
-|—|—|
+|:---|:---|
 | Text | Individual characters |
 | Array | Individual array elements |
 
@@ -566,7 +575,7 @@ In this example, number is automatically inferred to be of type integer, since n
 The foreach loop supports both mutable and immutable iteration variables.
 
 - Mutable variable:
-    
+
     variable numbers integer[] = {1, 2, 3};
 
     foreach (variable number : numbers) {
