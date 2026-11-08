@@ -360,9 +360,9 @@ Expressions are evaluated according to the following precedence hierarchy, from 
 | Precedence | Category | Operators | Associativity | Supported Types |
 |:---|:---|:---|:---|:---|
 | 1 (Lowest) | Assignment | =, +=, -=, *=, /=, %=, &=, \|= | Right | Variable name = Compatible Expression |
-| 2 | Logical OR | || | Left | boolean |
+| 2 | Logical OR | \|\| | Left | boolean |
 | 3 | Logical AND | && | Left | boolean |
-| 4 | Bitwise OR | | | Left | integer |
+| 4 | Bitwise OR | \| | Left | integer |
 | 5 | Bitwise AND | & | Left | integer |
 | 6 | Equality | ==, != | Left | Compatible types; text uses Objects.equals |
 | 7 | Relational | <, <=, >, >= | Left | integer, decimal |
