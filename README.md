@@ -58,7 +58,7 @@ IrisScript is built around four guiding principles:
 
 ### Prerequisites
 
-- Java Development Kit (JDK): Version 23 or newer, provided this matches the project's configured Java target. IrisScript needs both java and javac to compile and execute generated Java programs.
+- Java Development Kit (JDK): Version 23 or newer. IrisScript needs both java and javac to compile and execute generated Java programs.
 - Apache Maven: Version 3.8 or newer when building from source.
 - Operating System: Windows, Linux, or macOS.
 
@@ -99,14 +99,14 @@ Example on Windows PowerShell:
 
 ### JDK Discovery and Configuration
 
-IrisScript uses JdkLocator to locate a complete JDK instead of assuming that java and javac are always located under the current JVM's java.home.
+IrisScript uses `JdkLocator` to locate a complete JDK instead of assuming that java and javac are always located under the current JVM's `java.home`.
 
 The discovery process checks candidate locations in this order:
 
-1. IRISSCRIPT_JDK_HOME — an IrisScript-specific override.
-2. JAVA_HOME — the standard Java installation environment variable.
-3. java.home — the installation associated with the currently running JVM, followed by its parent directory where applicable.
-4. PATH — directories containing executable files.
+1. `IRISSCRIPT_JDK_HOME` — an IrisScript-specific override.
+2. `JAVA_HOME` — the standard Java installation environment variable.
+3. `java.home` — the installation associated with the currently running JVM, followed by its parent directory where applicable.
+4. `PATH` — directories containing executable files.
 
 A candidate JDK is accepted only when both the Java runtime and Java compiler executables are present in the same bin directory.
 
@@ -122,7 +122,7 @@ On Windows, the executables are typically named java.exe and javac.exe.
 
 #### Configuring a JDK
 
-Set either IRISSCRIPT_JDK_HOME or JAVA_HOME to the JDK root directory, not its bin directory.
+Set either `IRISSCRIPT_JDK_HOME` or `JAVA_HOME` to the JDK root directory, not its bin directory.
 
 Windows PowerShell:
 
@@ -150,11 +150,11 @@ Or:
 
 Replace the example paths with the actual JDK installation directory.
 
-IRISSCRIPT_JDK_HOME takes precedence over JAVA_HOME. If a candidate is invalid or lacks either required executable, discovery continues to the next candidate.
+`IRISSCRIPT_JDK_HOME` takes precedence over `JAVA_HOME`. If a candidate is invalid or lacks either required executable, discovery continues to the next candidate.
 
 IrisScript does not scan the entire filesystem. It checks known configuration locations and directories listed in PATH.
 
-Important: JDK discovery inside IrisScript occurs only after the compiler JVM has started. If a launcher starts the compiler using java -jar, that initial Java invocation must itself be able to locate Java. Internal discovery cannot resolve a missing Java runtime before the compiler starts.
+Important: JDK discovery inside IrisScript occurs only after the compiler JVM has started. If a launcher starts the compiler using `java -jar`, that initial Java invocation must itself be able to locate Java. Internal discovery cannot resolve a missing Java runtime before the compiler starts.
 
 ---
 
@@ -248,9 +248,9 @@ The following escape sequences are recognized:
 - \n: Line feed (newline)
 - \t: Horizontal tab
 - \r: Carriage return
-- \": Double quote
+- \\": Double quote
 - \\: Backslash
-- \$: Dollar sign (prevents interpolation when followed by `{`)
+- \\$: Dollar sign (prevents interpolation when followed by `{`)
 
 ---
 
@@ -319,12 +319,12 @@ The equality operators (==, !=) applied to text operands generate java.util.Obje
 
 Variables and constants are declared at the top level or within block statements.
 
-#### Mutable Variables (variable)
+#### Mutable Variables (`variable`)
 
     variable counter integer = 0;
     counter = counter + 1;
 
-#### Immutable Constants (constant)
+#### Immutable Constants (`constant`)
 
 Constants cannot be reassigned once initialized. An initializer is mandatory:
 
@@ -437,10 +437,10 @@ is exactly equivalent, in terms of the result, to writing:
     }
 
 However, these rules apply to switch statements:
-1. Duplicate 'when' branches are not allowed. In the previous example, val1 and val2 cannot be expressions of the same value.
-2. Expressions of 'when' branches can only be literal primitive expressions (integer, decimal, text, boolean).
+1. Duplicate `when` branches are not allowed. In the previous example, `val1` and `val2` cannot be expressions of the same value.
+2. Expressions of `when` branches can only be literal primitive expressions (integer, decimal, text, boolean).
 3. The target of a switch statement must be an expression that returns a primitive (integer, decimal, text, boolean). An array, for example, is not a valid switch statement target.
-4. The 'otherwise' branch is not mandatory, equivalent to the 'else' branch.
+4. The `otherwise` branch is not mandatory, equivalent to the `else` branch.
 
 A switch expression, on the other hand, replaces statements of each branch with an expression to return. It can be thought of as a multi-branch ternary operator. Formally:
 
@@ -462,7 +462,7 @@ is exactly equivalent, in terms of the result, to calling this function:
         }
     }
 
-And it follows the same rules of a switch statement mentioned above, except for rule 4, as an 'otherwise' branch is required in a switch expression to ensure all paths return a value. An example:
+And it follows the same rules of a switch statement mentioned above, except for rule 4, as an `otherwise` branch is required in a switch expression to ensure all paths return a value. An example:
 
     variable x integer = 12;
     terminal switch(x) {
@@ -501,34 +501,41 @@ The `for` loop provides structured iteration over ranges and sequences with thre
     }
 
 ##### 1. Initializations (`ForInit`)
+
 The initialization clause executes once before the loop begins. It supports:
-- **Variable or Constant Declarations:** Declaring one or more loop-scoped variables or constants sharing the same type:
+
+- **Variable or Constant Declarations:** Declaring one or more loop-scoped variables or constants sharing the same type. The variables declared are scoped exclusively to the loop header and body:
 ```
-    for (variable i integer = 0; i < 10; i = i + 1) { ... }
-    for (variable i, j integer = 0, 10; i < j; i = i + 1, j = j - 1) { ... }
+for (variable i integer = 0; i < 10; i = i + 1) { ... }
+for (variable i, j integer = 0, 10; i < j; i = i + 1, j = j - 1) { ... }
 ```
-Variables declared here are scoped exclusively to the loop header and body.
 
 - **Comma-Separated Expressions:** Reusing existing variables or executing side-effects:
 ```
-    for (i = 0, j = 100; i < j; i = i + 1) { ... }
+for (i = 0, j = 100; i < j; i = i + 1) { ... }
+
 ```
 - **Empty:** Omitting initialization altogether:
 ```
-    for (; i < 10; i = i + 1) { ... }
+for (; i < 10; i = i + 1) { ... }
 ```
+
 ##### 2. Condition (`Condition`)
+
 Evaluated *before* every iteration:
+
 - Must evaluate strictly to a `boolean` expression.
 - When omitted (e.g. `for (;;) { ... }`), the condition implicitly defaults to `true`, creating an infinite loop until terminated by `break` or `return`.
 
 ##### 3. Updates (`ForUpdate`)
-Executes at the end of each iteration, *and immediately whenever `skip;` is encountered*:
+
+Executes at the end of each iteration, *and immediately whenever `skip` is encountered*:
 
 - Accepts a comma-separated list of side-effect expressions (assignments, increments/decrements, calls):
 ```
-    for (variable i integer = 0; i < 10; i = i + 1, counter = counter + 2) { ... }
+for (variable i integer = 0; i < 10; i = i + 1, counter = counter + 2) { ... }
 ```
+
 - Can be omitted if step updates are handled within the loop body.
 
 #### The `foreach` Loop
@@ -576,22 +583,22 @@ The foreach loop supports both mutable and immutable iteration variables.
 
 - Mutable variable:
 ```
-    variable numbers integer[] = {1, 2, 3};
+variable numbers integer[] = {1, 2, 3};
 
-    foreach (variable number : numbers) {
-        number = number * 2;
-        terminal number;
-    }
+foreach (variable number : numbers) {
+    number = number * 2;
+    terminal number;
+}
 ```
 - Immutable variable:
 ```
-    variable numbers integer[] = {1, 2, 3};
+variable numbers integer[] = {1, 2, 3};
 
-    foreach (constant number : numbers) {
-        terminal number;
-    }
+foreach (constant number : numbers) {
+    terminal number;
+}
 ```
-When declared using constant, the loop variable cannot be reassigned within the loop body.
+When declared using `constant`, the loop variable cannot be reassigned within the loop body.
 
 ##### Iterating Over Text
 
@@ -660,7 +667,7 @@ Elements of an array in IrisScript can be accessed using the index operator just
     arr[i]; // 1D-array element access
     arr[i][j]; // 2D-array element access
 
-Formally, if arr is an n-dimensional array, arr[i] returns the i'th (n-1)-dimensional element of arr. Note that indices can be used as well with text variables to return a specific character.
+Formally, if `arr` is an n-dimensional array, `arr[i]` returns the i'th (n-1)-dimensional element of `arr`. Note that indices can be used as well with text variables to return a specific character.
 
     variable x text = "hello";
     variable part text = x[4]; // part = "o"
@@ -676,12 +683,12 @@ You can use the `length` keyword to retrieve the length of an array, or even jus
 
 ### Console Output: The Terminal Statement
 
-IrisScript uses the dedicated keyword terminal for standard output:
+IrisScript uses the dedicated keyword `terminal` for standard output:
 
     terminal <expression>;
 
 - The expression must not be void.
-- The transpiler maps terminal <expression>; to System.out.print(<expression>);.
+- The transpiler maps `terminal <expression>;` to `System.out.print(<expression>);`.
 - While arrays are references, using `terminal <array-identifier>;` will print a text representation of the array's elements instead of the array reference, unlike Java.
 
 ---
@@ -697,7 +704,7 @@ Functions are defined with the function keyword, followed by the function name, 
 #### Function Rules
 
 1. The return type appears between the function name and the parameter list.
-2. Every parameter must specify variable or constant, an identifier name, and an explicit type.
+2. Every parameter must specify `variable` or `constant`, an identifier name, and an explicit type.
 3. For any non-void function, every possible control-flow branch must conclude with a return statement carrying an expression.
 4. Void functions may use bare return statements or omit them. Returning an expression from a void function triggers an error.
 
@@ -709,7 +716,7 @@ IrisScript supports modular compilation across multiple .iris files simultaneous
 
 #### Unit-Local Declarations (Default)
 
-Any function or top-level variable declared without global is visible only within the file in which it is defined.
+Any function or top-level variable declared without `global` is visible only within the file in which it is defined.
 
 Example in FileA.iris:
 
@@ -721,7 +728,7 @@ FileB.iris cannot access helper() unless it is declared global.
 
 #### Global Declarations (global)
 
-Prefixing a declaration with global makes it accessible across all compilation units in the build:
+Prefixing a declaration with `global` makes it accessible across all compilation units in the build:
 
     global variable appVersion text = "1.0.0";
 
@@ -768,9 +775,9 @@ IrisScript supports two execution paradigms.
 When at least one function named main exists across the compilation units:
 
 - Exactly one main function must exist.
-- It must have the signature function main void() or global function main void().
+- It must have the signature `function main void()` or `global function main void()`.
 - It must take zero parameters and return void.
-- Top-level executable statements across modules are not executed automatically in this mode; execution transfers directly to main().
+- Top-level executable statements across modules are not executed automatically in this mode; execution transfers directly to `main()`.
 
 #### 2. Top-Level Script Mode
 
@@ -973,9 +980,9 @@ JdkLocator encapsulates the search for a complete Java Development Kit.
 
 It checks, in priority order:
 
-1. IRISSCRIPT_JDK_HOME.
-2. JAVA_HOME.
-3. The current JVM's java.home and its parent directory.
+1. `IRISSCRIPT_JDK_HOME`.
+2. `JAVA_HOME`.
+3. The current JVM's `java.home` and its parent directory.
 4. Directories listed in PATH.
 
 It uses platform-aware Java path APIs, the platform's PATH separator, and platform-appropriate executable names. It does not hardcode common installation paths or scan the entire filesystem.
