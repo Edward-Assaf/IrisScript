@@ -1,4 +1,4 @@
-# IrisScript Language (v1.3.1)
+# IrisScript Language (v1.4)
 
 IrisScript is a statically typed, structured programming language designed for clarity, safety, and seamless execution on the Java Virtual Machine. IrisScript compiles into Java source code, which is then compiled and executed using an installed Java Development Kit (JDK).
 
@@ -152,7 +152,7 @@ Replace the example paths with the actual JDK installation directory.
 
 `IRISSCRIPT_JDK_HOME` takes precedence over `JAVA_HOME`. If a candidate is invalid or lacks either required executable, discovery continues to the next candidate.
 
-IrisScript does not scan the entire filesystem. It checks known configuration locations and directories listed in PATH.
+IrisScript does not scan the entire filesystem. It checks known configuration locations and directories listed in `PATH`.
 
 Important: JDK discovery inside IrisScript occurs only after the compiler JVM has started. If a launcher starts the compiler using `java -jar`, that initial Java invocation must itself be able to locate Java. Internal discovery cannot resolve a missing Java runtime before the compiler starts.
 
@@ -249,7 +249,7 @@ The following escape sequences are recognized:
 - \t: Horizontal tab
 - \r: Carriage return
 - \\": Double quote
-- \\: Backslash
+- \\\\: Backslash
 - \\$: Dollar sign (prevents interpolation when followed by `{`)
 
 ---
@@ -500,7 +500,7 @@ The `for` loop provides structured iteration over ranges and sequences with thre
         // loop body
     }
 
-##### 1. Initializations (`ForInit`)
+##### 1. Initializations
 
 The initialization clause executes once before the loop begins. It supports:
 
@@ -513,21 +513,20 @@ for (variable i, j integer = 0, 10; i < j; i = i + 1, j = j - 1) { ... }
 - **Comma-Separated Expressions:** Reusing existing variables or executing side-effects:
 ```
 for (i = 0, j = 100; i < j; i = i + 1) { ... }
-
 ```
 - **Empty:** Omitting initialization altogether:
 ```
 for (; i < 10; i = i + 1) { ... }
 ```
 
-##### 2. Condition (`Condition`)
+##### 2. Condition
 
 Evaluated *before* every iteration:
 
 - Must evaluate strictly to a `boolean` expression.
 - When omitted (e.g. `for (;;) { ... }`), the condition implicitly defaults to `true`, creating an infinite loop until terminated by `break` or `return`.
 
-##### 3. Updates (`ForUpdate`)
+##### 3. Updates
 
 Executes at the end of each iteration, *and immediately whenever `skip` is encountered*:
 
@@ -708,6 +707,40 @@ Functions are defined with the function keyword, followed by the function name, 
 3. For any non-void function, every possible control-flow branch must conclude with a return statement carrying an expression.
 4. Void functions may use bare return statements or omit them. Returning an expression from a void function triggers an error.
 
+#### Function Overloading
+
+IrisScript supports function overloading as of v1.4. Two declared functions can have the same name as long as at least one of the following is true:
+
+1. The two functions have a different number of parameters.
+2. The two functions differ in the type of at least one parameter. In this case, only parameters of the same order from each function are checked.
+
+Call expressions are optimized to look for the best-matching function declaration among the overloads. If no function declaration matches the arguments list in the call expression, error E2019 is raised.
+
+There may be multiple matching function declarations per call expression. In this case, the compiler assigns scores to each function declaration based on criteria like exact match, widening conversions and narrowing conversions, and the declaration with the highest score is chosen.
+
+```
+function f void (variable x integer) {
+    terminal 1;
+}
+
+function f void (variable x integer, variable y integer) {
+    terminal 2;
+}
+
+function f void (variable x integer, variable y decimal) {
+    terminal 3;
+}
+
+f(1);     // 1
+f(1,1);   // 2
+f(1,1.0); // 3
+f(1.0,1); // 2
+```
+
+The main idea in matching is that exact matches have precedence over widening converions, and widening conversions have precedence over narrowing conversions.
+
+In the case of one or more function declarations having the maximum score, error E2046 is raised to indicate ambiguity in the arguments list provided.
+
 ---
 
 ### Scope Rules: Unit-Local vs Global
@@ -724,7 +757,7 @@ Example in FileA.iris:
         return 42;
     }
 
-FileB.iris cannot access helper() unless it is declared global.
+FileB.iris cannot access `helper()` unless it is declared global.
 
 #### Global Declarations (global)
 
@@ -858,7 +891,7 @@ The compiler features categorized error reporting.
 | E2016 | Error | Operator requires boolean operands. |
 | E2017 | Error | Function call must target a named function. |
 | E2018 | Error | Expression being invoked is not a function. |
-| E2019 | Error | Function argument count mismatch. |
+| E2019 | Error | No existing overload of function matches arguments list. |
 | E2020 | Error | Functions cannot be passed or assigned as first-class variable values. |
 | E2021 | Error | Unsupported literal value type. |
 | E2022 | Error | Unary plus or minus requires a numeric operand. |
@@ -885,6 +918,7 @@ The compiler features categorized error reporting.
 | E2043 | Error | Invalid operands for `typecast` expression. |
 | E2044 | Error | Only iterable expressions can be used in a `foreach` loop. |
 | E2045 | Error | Assignment expression's target is an index expression with an invalid target type. |
+| E2046 | Error | Ambiguous call expression. |
 | W2001 | Warning | Potential loss of precision converting decimal to integer. |
 
 ### Build and Execution Diagnostics (E3xxx)
@@ -983,9 +1017,9 @@ It checks, in priority order:
 1. `IRISSCRIPT_JDK_HOME`.
 2. `JAVA_HOME`.
 3. The current JVM's `java.home` and its parent directory.
-4. Directories listed in PATH.
+4. Directories listed in `PATH`.
 
-It uses platform-aware Java path APIs, the platform's PATH separator, and platform-appropriate executable names. It does not hardcode common installation paths or scan the entire filesystem.
+It uses platform-aware Java path APIs, the platform's `PATH` separator, and platform-appropriate executable names. It does not hardcode common installation paths or scan the entire filesystem.
 
 A candidate is accepted only if java and javac are present in the same bin directory. If no valid candidate is found, JdkLocator throws an IOException explaining that a complete JDK could not be found.
 
@@ -1183,6 +1217,6 @@ IrisScript includes a VS Code extension located in the repository's VS Code exte
 
 The extension's Java-launch mechanism and the compiler's internal JDK discovery are separate responsibilities.
 
-If the extension launches the compiler using java -jar, Java must be available to that initial launch command. JdkLocator operates only after the compiler JVM has started.
+If the extension launches the compiler using `java -jar`, Java must be available to that initial launch command. JdkLocator operates only after the compiler JVM has started.
 
 For compiling and executing IrisScript programs, a complete JDK containing both java and javac must be discoverable through the supported configuration paths.

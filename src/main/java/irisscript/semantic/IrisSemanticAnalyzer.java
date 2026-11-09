@@ -118,7 +118,7 @@ public final class IrisSemanticAnalyzer {
         Symbol symbol = new Symbol(functionDeclaration.name(), SymbolKind.FUNCTION, returnType, false,
                 parameterTypes, functionDeclaration.span(), functionDeclaration, unit);
         if (!scope.define(symbol)) {
-            reportDuplicateSymbol(functionDeclaration.name(), functionDeclaration.span(), scope);
+            reportDuplicateSymbol(symbol, functionDeclaration.span(), scope);
         }
     }
 
@@ -128,7 +128,7 @@ public final class IrisSemanticAnalyzer {
         Symbol symbol = new Symbol(variableStatement.name(), SymbolKind.VARIABLE, variableType,
                 variableStatement.isConstant(), List.of(), variableStatement.span(), variableStatement, unit);
         if (!scope.define(symbol)) {
-            reportDuplicateSymbol(variableStatement.name(), variableStatement.span(), scope);
+            reportDuplicateSymbol(symbol, variableStatement.span(), scope);
         }
     }
 
@@ -155,7 +155,7 @@ public final class IrisSemanticAnalyzer {
                         parameter.isConstant(), List.of(), parameter.span(), parameter, currentUnit);
                 semanticModel.bindOwner(parameter, currentUnit);
                 if (!functionScope.define(parameterSymbol)) {
-                    reportDuplicateSymbol(parameter.name(), parameter.span(), functionScope);
+                    reportDuplicateSymbol(parameterSymbol, parameter.span(), functionScope);
                 }
             }
             analyzeStatement(functionDeclaration.body(), functionScope, unitScope);
@@ -265,18 +265,13 @@ public final class IrisSemanticAnalyzer {
             validateType(declaredType, initializerType, initializer.span());
         }
         if (variableStatement.isGlobal() || scope == unitScope) {
-            Scope declarationScope = variableStatement.isGlobal() ? globalScope : unitScope;
-            if (declarationScope.resolveLocal(variableStatement.name()).isEmpty()) {
-                throw new IllegalStateException("Top-level variable '" + variableStatement.name()
-                        + "' was not registered during declaration collection");
-            }
             return;
         }
         Symbol symbol = new Symbol(variableStatement.name(), SymbolKind.VARIABLE, declaredType,
                 variableStatement.isConstant(), List.of(), variableStatement.span(), variableStatement, currentUnit);
         semanticModel.bindOwner(variableStatement, currentUnit);
         if (!scope.define(symbol)) {
-            reportDuplicateSymbol(variableStatement.name(), variableStatement.span(), scope);
+            reportDuplicateSymbol(symbol, variableStatement.span(), scope);
         }
     }
 
@@ -332,7 +327,7 @@ public final class IrisSemanticAnalyzer {
                 currentUnit);
         semanticModel.bindOwner(variableStatement, currentUnit);
         if (!foreachScope.define(variableSymbol)) {
-            reportDuplicateSymbol(variableStatement.name(), variableStatement.span(), foreachScope);
+            reportDuplicateSymbol(variableSymbol, variableStatement.span(), foreachScope);
         }
         try {
             loopDepth++;
@@ -410,16 +405,16 @@ public final class IrisSemanticAnalyzer {
     private TypeInfo analyzeAssignmentExpression(AssignmentExpression assignmentExpression, Scope scope) {
         TypeInfo variableType = null;
         if (assignmentExpression.target() instanceof IdentifierExpression identifier) {
-            Optional<Symbol> symbol = scope.resolve(identifier.name());
+            Optional<Symbol> symbol = scope.resolveVariable(identifier.name());
             if (!symbol.isPresent()) {
-                reportError("E2010", "Name '" + identifier.name() + "' does not exist", identifier.span());
+                if (!scope.resolveFunctions(identifier.name()).isEmpty()) {
+                    reportError("E2011", "Cannot assign value to a function", assignmentExpression.span());
+                } else {
+                    reportError("E2010", "Name '" + identifier.name() + "' does not exist", identifier.span());
+                }
                 return ERROR_TYPE;
             }
             semanticModel.bindResolution(assignmentExpression, symbol.get().declaration());
-            if (symbol.get().kind() == SymbolKind.FUNCTION) {
-                reportError("E2011", "Cannot assign value to a function", assignmentExpression.span());
-                return ERROR_TYPE;
-            }
             if (symbol.get().isConstant()) {
                 reportError("E2012", "Cannot reassign a variable declared as 'constant'", assignmentExpression.span());
                 return ERROR_TYPE;
@@ -428,7 +423,7 @@ public final class IrisSemanticAnalyzer {
         } else if (assignmentExpression.target() instanceof IndexExpression indexExpression) {
             IdentifierExpression root = rootIdentifier(indexExpression);
             if (root != null) {
-                Optional<Symbol> symbol = scope.resolve(root.name());
+                Optional<Symbol> symbol = scope.resolveVariable(root.name());
                 if (symbol.isPresent()) {
                     semanticModel.bindResolution(assignmentExpression, symbol.get().declaration());
                 }
@@ -521,37 +516,62 @@ public final class IrisSemanticAnalyzer {
             }
             return ERROR_TYPE;
         }
-        Optional<Symbol> symbol = scope.resolve(identifier.name());
-        if (!symbol.isPresent()) {
-            reportError("E2010", "Function name '" + identifier.name() + "' does not exist", identifier.span());
+        List<Symbol> symbols = scope.resolveFunctions(identifier.name());
+        if (symbols.isEmpty()) {
+            if (scope.resolveVariable(identifier.name()).isPresent()) {
+                reportError("E2018", "'" + identifier.name() + "' is not a function", identifier.span());
+            } else {
+                reportError("E2010", "Function name '" + identifier.name() + "' does not exist", identifier.span());
+            }
             for (Expression argument : callExpression.arguments()) {
                 analyzeExpression(argument, scope);
             }
             return ERROR_TYPE;
         }
-        semanticModel.bindResolution(callExpression, symbol.get().declaration());
-        semanticModel.bindResolution(identifier, symbol.get().declaration());
-        if (symbol.get().kind() != SymbolKind.FUNCTION) {
-            reportError("E2018", "'" + identifier.name() + "' is not a function", identifier.span());
-            for (Expression argument : callExpression.arguments()) {
-                analyzeExpression(argument, scope);
+        List<TypeInfo> argumentTypes = new ArrayList<>();
+        for (Expression argumentExpression : callExpression.arguments()) {
+            argumentTypes.add(analyzeExpression(argumentExpression, scope));
+        }
+        Symbol match = null;
+        int currentScore = 0;
+        int argumentsSize = callExpression.arguments().size();
+        boolean ambiguous = false;
+        for (Symbol candidate : symbols) {
+            if (candidate.parameterTypes().size() != argumentsSize) {
+                continue;
             }
+            int candidateScore = getCandidateScore(candidate, argumentTypes, argumentsSize);
+            if (candidateScore <= 0) {
+                continue;
+            }
+            if (match == null) {
+                match = candidate;
+                currentScore = candidateScore;
+            } else if (candidateScore > currentScore) {
+                match = candidate;
+                currentScore = candidateScore;
+                ambiguous = false;
+            } else if (candidateScore == currentScore) {
+                ambiguous = true;
+            }
+        }
+        if (match == null) {
+            reportError("E2019",
+                    "No existing overload of function '" + identifier.name() + "' matches the provided argument list",
+                    callExpression.span());
             return ERROR_TYPE;
         }
-        List<TypeInfo> parameterTypes = symbol.get().parameterTypes();
-        List<Expression> arguments = callExpression.arguments();
-        int parameterCount = parameterTypes.size(), argumentCount = arguments.size();
-        if (parameterCount != argumentCount) {
-            reportError("E2019", "Function '" + identifier.name() + "' expects " + parameterCount
-                    + " argument(s), but received " + argumentCount, callExpression.span());
+        if (ambiguous) {
+            reportError("E2046", "Ambiguous call expression: multiple overloads of the function '" + identifier.name()
+                    + "' match the provided argument list", callExpression.span());
+            return ERROR_TYPE;
         }
-        for (int i = 0; i < argumentCount; i++) {
-            TypeInfo argumentType = analyzeExpression(arguments.get(i), scope);
-            if (i < parameterCount) {
-                validateType(parameterTypes.get(i), argumentType, arguments.get(i).span());
-            }
+        semanticModel.bindResolution(callExpression, match.declaration());
+        semanticModel.bindResolution(identifier, match.declaration());
+        for (int i = 0; i < argumentsSize; i++) {
+            validateType(match.parameterTypes().get(i), argumentTypes.get(i), callExpression.arguments().get(i).span());
         }
-        return symbol.get().type();
+        return match.type();
     }
 
     private TypeInfo analyzeGroupingExpression(GroupingExpression groupingExpression, Scope scope) {
@@ -559,17 +579,17 @@ public final class IrisSemanticAnalyzer {
     }
 
     private TypeInfo analyzeIdentifierExpression(IdentifierExpression identifierExpression, Scope scope) {
-        Optional<Symbol> symbol = scope.resolve(identifierExpression.name());
+        Optional<Symbol> symbol = scope.resolveVariable(identifierExpression.name());
         if (!symbol.isPresent()) {
-            reportError("E2010", "Name '" + identifierExpression.name() + "' does not exist",
-                    identifierExpression.span());
+            if (!scope.resolveFunctions(identifierExpression.name()).isEmpty()) {
+                reportError("E2020", "Functions cannot be used as a variable value", identifierExpression.span());
+            } else {
+                reportError("E2010", "Name '" + identifierExpression.name() + "' does not exist",
+                        identifierExpression.span());
+            }
             return ERROR_TYPE;
         }
         semanticModel.bindResolution(identifierExpression, symbol.get().declaration());
-        if (symbol.get().kind() == SymbolKind.FUNCTION) {
-            reportError("E2020", "Functions cannot be used as a variable value", identifierExpression.span());
-            return ERROR_TYPE;
-        }
         return symbol.get().type();
     }
 
@@ -622,7 +642,7 @@ public final class IrisSemanticAnalyzer {
                     yield ERROR_TYPE;
                 }
                 if (unaryExpression.operand() instanceof IdentifierExpression identifier) {
-                    Optional<Symbol> symbol = scope.resolve(identifier.name());
+                    Optional<Symbol> symbol = scope.resolveVariable(identifier.name());
                     if (!symbol.isPresent()) {
                         yield ERROR_TYPE;
                     }
@@ -819,6 +839,36 @@ public final class IrisSemanticAnalyzer {
     // ==========================================
     // Helpers
     // ==========================================
+
+    private int getCandidateScore(Symbol candidate, List<TypeInfo> argumentTypes, int argumentsSize) {
+        int score = 0;
+        for (int i = 0; i < argumentsSize; i++) {
+            TypeInfo candidateParameterType = candidate.parameterTypes().get(i);
+            TypeInfo argumentType = argumentTypes.get(i);
+            if (candidateParameterType.equals(argumentType)) {
+                score += 3;
+                continue;
+            }
+            if (candidateParameterType.equals(DECIMAL_TYPE)) {
+                if (argumentType.equals(INTEGER_TYPE)) {
+                    score += 2;
+                } else {
+                    return -1;
+                }
+                continue;
+            }
+            if (candidateParameterType.equals(INTEGER_TYPE)) {
+                if (argumentType.equals(DECIMAL_TYPE)) {
+                    score += 1;
+                } else {
+                    return -1;
+                }
+                continue;
+            }
+            return -1;
+        }
+        return score;
+    }
 
     private boolean iterable(TypeInfo type) {
         return type.isArray() || type.equals(TEXT_TYPE);
@@ -1091,13 +1141,14 @@ public final class IrisSemanticAnalyzer {
         return null;
     }
 
-    private void reportDuplicateSymbol(String name, SourceSpan span, Scope scope) {
-        Symbol alreadyExisting = scope.getExistingSymbol(name);
+    private void reportDuplicateSymbol(Symbol symbol, SourceSpan span, Scope scope) {
+        Symbol alreadyExisting = scope.getDuplicateSymbol(symbol);
         if (alreadyExisting == null) {
-            reportError("E2003", "Duplicate declaration of '" + name + "'", span);
+            reportError("E2003", "Duplicate declaration of '" + symbol.name() + "'", span);
+            return;
         }
-        reportError("E2003", "Duplicate declaration of '" + name + "'", span, "Previous declaration found here",
-                alreadyExisting.declarationSpan());
+        reportError("E2003", "Duplicate declaration of '" + symbol.name() + "'", span,
+                "Previous declaration found here", alreadyExisting.declarationSpan());
     }
 
     private void reportError(String code, String message, SourceSpan span) {
