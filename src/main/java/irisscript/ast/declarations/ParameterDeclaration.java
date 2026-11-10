@@ -4,10 +4,11 @@ import java.util.Objects;
 
 import irisscript.ast.types.TypeNode;
 import irisscript.ast.AstNode;
+import irisscript.ast.expressions.Expression;
 import irisscript.source.SourceSpan;
 
-public final record ParameterDeclaration(String name, TypeNode type, boolean isConstant, SourceSpan span)
-        implements AstNode {
+public final record ParameterDeclaration(String name, TypeNode type, boolean isConstant, Expression defaultValue,
+        SourceSpan span) implements AstNode {
 
     public ParameterDeclaration {
         Objects.requireNonNull(name, "name must not be null");

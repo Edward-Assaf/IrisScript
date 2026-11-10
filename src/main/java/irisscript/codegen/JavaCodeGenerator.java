@@ -582,17 +582,23 @@ public final class JavaCodeGenerator {
                     emitExpression(call.callee());
                 }
                 out.append('(');
+                AstNode declaration = semanticModel.resolvedDeclaration(call).orElse(null);
+                FunctionDeclaration function = (FunctionDeclaration) declaration;
                 for (int i = 0; i < call.arguments().size(); i++) {
                     if (i > 0) {
                         out.append(", ");
                     }
                     Expression argument = call.arguments().get(i);
-                    AstNode declaration = semanticModel.resolvedDeclaration(call).orElse(null);
-                    if (declaration instanceof FunctionDeclaration function && i < function.parameters().size()) {
+                    if (i < function.parameters().size()) {
                         emitExpressionAs(toTypeInfo(function.parameters().get(i).type()), argument);
                     } else {
                         emitExpression(argument);
                     }
+                }
+                for (int i = call.arguments().size(); i < function.parameters().size(); i++) {
+                    out.append(", ");
+                    ParameterDeclaration parameter = function.parameters().get(i);
+                    emitExpressionAs(toTypeInfo(parameter.type()), parameter.defaultValue());
                 }
                 out.append(')');
             }

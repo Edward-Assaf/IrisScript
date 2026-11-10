@@ -151,6 +151,10 @@ public final class IrisSemanticAnalyzer {
                     reportError("E2032", "Size-declaration for arrays is only permitted in declaration statements",
                             parameter.type().span());
                 }
+                if (parameter.defaultValue() != null) {
+                    TypeInfo defaultValueType = analyzeExpression(parameter.defaultValue(), scope);
+                    validateType(parameterType, defaultValueType, parameter.defaultValue().span());
+                }
                 Symbol parameterSymbol = new Symbol(parameter.name(), SymbolKind.PARAMETER, parameterType,
                         parameter.isConstant(), List.of(), parameter.span(), parameter, currentUnit);
                 semanticModel.bindOwner(parameter, currentUnit);
@@ -537,13 +541,21 @@ public final class IrisSemanticAnalyzer {
         int argumentsSize = callExpression.arguments().size();
         boolean ambiguous = false;
         for (Symbol candidate : symbols) {
-            if (candidate.parameterTypes().size() != argumentsSize) {
-                continue;
+            int candidateParametersSize = candidate.parameterTypes().size();
+            int numberOfDefaultParameters = getNumberOfDefaultParameters(candidate);
+            if (candidateParametersSize != argumentsSize) {
+                if (argumentsSize > candidateParametersSize) {
+                    continue;
+                }
+                if (argumentsSize < (candidateParametersSize - numberOfDefaultParameters)) {
+                    continue;
+                }
             }
             int candidateScore = getCandidateScore(candidate, argumentTypes, argumentsSize);
             if (candidateScore <= 0) {
                 continue;
             }
+            candidateScore -= (candidateParametersSize - argumentsSize);
             if (match == null) {
                 match = candidate;
                 currentScore = candidateScore;
@@ -839,6 +851,21 @@ public final class IrisSemanticAnalyzer {
     // ==========================================
     // Helpers
     // ==========================================
+
+    private int getNumberOfDefaultParameters(Symbol functionSymbol) {
+        if (functionSymbol.kind() != SymbolKind.FUNCTION) {
+            return 0;
+        }
+        FunctionDeclaration functionDeclaration = (FunctionDeclaration) functionSymbol.declaration();
+        List<ParameterDeclaration> parameterDeclarations = functionDeclaration.parameters();
+        int total = 0;
+        for (ParameterDeclaration parameter : parameterDeclarations) {
+            if (parameter.defaultValue() != null) {
+                total += 1;
+            }
+        }
+        return total;
+    }
 
     private int getCandidateScore(Symbol candidate, List<TypeInfo> argumentTypes, int argumentsSize) {
         int score = 0;

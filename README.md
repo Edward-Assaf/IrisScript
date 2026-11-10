@@ -1,4 +1,4 @@
-# IrisScript Language (v1.4)
+# IrisScript Language (v.1.4.1)
 
 IrisScript is a statically typed, structured programming language designed for clarity, safety, and seamless execution on the Java Virtual Machine. IrisScript compiles into Java source code, which is then compiled and executed using an installed Java Development Kit (JDK).
 
@@ -707,6 +707,38 @@ Functions are defined with the function keyword, followed by the function name, 
 3. For any non-void function, every possible control-flow branch must conclude with a return statement carrying an expression.
 4. Void functions may use bare return statements or omit them. Returning an expression from a void function triggers an error.
 
+#### Default Parameters
+
+A function parameter can have a default value that is assigned to it in cases where the call expression fails to provide a corresponding argument.
+
+```
+function check void(variable a integer, variable b integer = 1) {
+    terminal b;
+}
+check(1,5); // b = 5
+check(3);   // b = 1
+check();    // error
+```
+
+In this example, parameter `b` received a default value (`=1`). This default value is only used when a corresponding argument is not provided in the call expression. 
+
+In the first test, `check(1,5)` provided two arguments, one for each parameter. Thus, `b` will be set to 5, ignoring the default value when a valid argument is provided.
+
+In the second test, `check(3)` provided one argument only, for parameter `a`. Thus, parameter `b` will be set to the default value (1) as no valid argument was provided by the call expression. 
+
+Note that `check()` still fails and raises an error since parameter `a` neither has a default value nor was provided a fallback default value. Under these rules, a call expression fails when a parameter that __has no default__ value fails to receive a corresonding argument.
+
+**Note**: Default parameters are only permitted at the end of the parameters list in a function declaration. If a parameter with no default value appears after any default parameter, error E1029 is raised.
+
+A default parameter's default value **does not** live in the local scope of the function. A direct result of this is that a parameter's default value can never be an identifier of another parameter within the function's declaration, as parameter declarations live in the function's local scope, but it can be any valid expression otherwise.
+
+```
+function f void (variable x integer, variable y integer = x) {...} // illegal
+
+variable t integer = 12;
+function h void (variable k integer, variable m integer = t) {...} // legal
+```
+
 #### Function Overloading
 
 IrisScript supports function overloading as of v1.4. Two declared functions can have the same name as long as at least one of the following is true:
@@ -740,6 +772,8 @@ f(1.0,1); // 2
 The main idea in matching is that exact matches have precedence over widening converions, and widening conversions have precedence over narrowing conversions.
 
 In the case of one or more function declarations having the maximum score, error E2046 is raised to indicate ambiguity in the arguments list provided.
+
+**Special Case**: If a call expression `f(a,b,c)` finds two matching function declarations: `f(x,y,z)` and `f(x,y,z,w=1)` (one with 3 parameters and one with 4 parameters where one is a default parameter), the compiler will choose the declaration with the least amount of parameters. Thus, in this case, `f(x,y,z)` is chosen over `f(x,y,z,w=1)`.
 
 ---
 
@@ -868,6 +902,7 @@ The compiler features categorized error reporting.
 | E1026 | Error | Expected comma. |
 | E1027 | Error | Missing semicolon or illegal statement in `for` initializations. |
 | E1028 | Error | Expected semicolon after variable declaration in `foreach`. |
+| E1029 | Error | Parameter with no default value appeared after default parameter. |
 
 ### Semantic Diagnostics (E2xxx, W2xxx)
 

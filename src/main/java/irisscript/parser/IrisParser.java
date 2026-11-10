@@ -87,6 +87,7 @@ public final class IrisParser {
         consume(TokenType.DELIMITER_LPAREN, "E1008", "Expected '(' after function return type");
         List<ParameterDeclaration> parameters = new ArrayList<>();
         if (!tokens.check(TokenType.DELIMITER_RPAREN)) {
+            boolean defaultParameterFound = false;
             do {
                 if (!tokens.match(TokenType.KEYWORD_VARIABLE, TokenType.KEYWORD_CONSTANT)) {
                     reportError("E1011", "Expected 'variable' or 'constant' keyword", tokens.peek().span());
@@ -96,8 +97,23 @@ public final class IrisParser {
                 boolean isConstant = keyword.type() == TokenType.KEYWORD_CONSTANT;
                 Token paramName = consume(TokenType.IDENTIFIER, "E1009", "Expected parameter name");
                 TypeNode paramType = parseType();
-                SourceSpan paramSpan = SourceSpan.covering(keyword.span(), paramType.span());
-                parameters.add(new ParameterDeclaration(paramName.lexeme(), paramType, isConstant, paramSpan));
+                Expression defaultVal = null;
+                if (tokens.match(TokenType.OPERATOR_ONE_EQ)) {
+                    defaultVal = parseExpression();
+                    defaultParameterFound = true;
+                } else if (defaultParameterFound) {
+                    reportError("E1029",
+                            "A parameter with no default value cannot appear after a parameter with a default value",
+                            SourceSpan.covering(keyword.span(), paramType.span()));
+                }
+                SourceSpan paramSpan;
+                if (defaultVal == null) {
+                    paramSpan = SourceSpan.covering(keyword.span(), paramType.span());
+                } else {
+                    paramSpan = SourceSpan.covering(keyword.span(), defaultVal.span());
+                }
+                parameters.add(new ParameterDeclaration(paramName.lexeme(), paramType, isConstant,
+                        defaultVal, paramSpan));
             } while (tokens.match(TokenType.DELIMITER_COMMA));
         }
         consume(TokenType.DELIMITER_RPAREN, "E1003", "Expected ')' after parameters");
